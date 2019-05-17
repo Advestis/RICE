@@ -5,12 +5,12 @@ from distutils.core import setup
 with open('requirements.txt') as f:
     requirements = f.read().splitlines()
     
-setup(name='RIPE',
-      version='0.1',
-      description='RIPE algorithm',
+setup(name='RICE',
+      version='1.0',
+      description='RICE algorithm',
       author='Vincent Margot',
       author_email='vincent.margot@hotmail.fr',
       url='',
-      packages=['RIPE'],
+      packages=['RICE'],
       install_requires=requirements,
       )
