@@ -1786,7 +1786,7 @@ class Learning(BaseEstimator):
 
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
-            beta = 1./pow(X.shape[0], self.alpha/2. - 1./4)
+            beta = 1./pow(X.shape[0], 1./4 - self.alpha/2.)
             self.set_params(beta=beta)
         
         if hasattr(self, 'covmin') is False:
