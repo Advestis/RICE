@@ -366,7 +366,7 @@ def add_insignificant_rule(rs, X, y):
                 x_neg = np.extract(no_rule_act_neg, X[:, i])
                 neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
                                                   bmax=[x_neg.max()],
-                                                  features_name='',
+                                                  features_name=[''],
                                                   features_index=[i],
                                                   xmax=[X[:, i].max()],
                                                   xmin=[X[:, i].min()]))
@@ -378,7 +378,7 @@ def add_insignificant_rule(rs, X, y):
                 x_pos = np.extract(no_rule_act_pos, X[:, i])
                 pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
                                                   bmax=[x_pos.max()],
-                                                  features_name='',
+                                                  features_name=[''],
                                                   features_index=[i],
                                                   xmax=[X[:, i].max()],
                                                   xmin=[X[:, i].min()]))
@@ -1249,25 +1249,22 @@ class Rule(object):
         
         if cov > cov_max or cov < cov_min:
             self.set_params(out=True)
-            self.set_params(reason='Cov')
-            return
-        
-        else:
-            pred = calc_prediction(active_vect, y)
-            self.set_params(pred=pred)
+            
+        pred = calc_prediction(active_vect, y)
+        self.set_params(pred=pred)
 
-            cond_var = calc_variance(active_vect, y)
-            self.set_params(var=cond_var)
-            
-            if yreal is None:
-                yreal = y
-            
-            pred_vect = active_vect * pred
-            cplt_val = calc_prediction(1 - active_vect, y)
-            np.place(pred_vect, pred_vect == 0, cplt_val)
-            
-            rez = calc_crit(pred_vect, yreal, ymean, ystd, method)
-            self.set_params(crit=rez)
+        cond_var = calc_variance(active_vect, y)
+        self.set_params(var=cond_var)
+        
+        if yreal is None:
+            yreal = y
+        
+        pred_vect = active_vect * pred
+        cplt_val = calc_prediction(1 - active_vect, y)
+        np.place(pred_vect, pred_vect == 0, cplt_val)
+        
+        rez = calc_crit(pred_vect, yreal, ymean, ystd, method)
+        self.set_params(crit=rez)
     
     def calc_activation(self, x=None):
         """
@@ -1465,7 +1462,8 @@ class RuleSet(object):
         Add one rule to a RuleSet object (self).
         """
         assert rule.__class__ == Rule, 'Must be a rule object (try extend)'
-        self.rules.append(rule)
+        if any(map(lambda r: rule == r, self)) is False:
+            self.rules.append(rule)
     
     def extend(self, ruleset):
         """
@@ -1578,13 +1576,13 @@ class RuleSet(object):
         using an rule based partition
         """
         # Activation of all rules in the learning set
-        activ_mat = np.ndarray([rule.activation for rule in self])
+        activ_mat = np.array([rule.activation for rule in self])
         
         if x is None:
             pred_mat = activ_mat.T
         else:
             pred_mat = [rule.calc_activation(x) for rule in self]
-            pred_mat = np.ndarray(pred_mat).T
+            pred_mat = np.array(pred_mat).T
         
         nopred_mat = np.logical_not(pred_mat)
         
@@ -1594,12 +1592,13 @@ class RuleSet(object):
         # Activation of the intersection of all activated rules at each row
         dot_activation = np.dot(pred_mat, activ_mat)
         # Activation vectors for intersection of activated rules
-        dot_activation = np.ndarray(dot_activation == nb_rules_active,
-                                   dtype='int')
+        dot_activation = np.array([np.equal(act, nb_rules) for act, nb_rules in
+                                   zip(dot_activation, nb_rules_active)],
+                                  dtype='int')
         
         # Activation of the intersection of all NOT activated rules at each row
         dot_noactivation = np.dot(nopred_mat, activ_mat)
-        dot_noactivation = np.ndarray(dot_noactivation,
+        dot_noactivation = np.array(dot_noactivation,
                                      dtype='int')
         
         # Calculation of the binary vector for cells of the partition et each row
@@ -1780,7 +1779,7 @@ class Learning(BaseEstimator):
         """
         
         # Check type for data
-        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
+        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.array
         y = check_array(y, dtype=None, ensure_2d=False,
                         force_all_finite=False)  # type: np.array
 
@@ -2064,9 +2063,15 @@ class Learning(BaseEstimator):
             sub_ruleset = ruleset.extract_cp(cp)
         else:
             sub_ruleset = copy.deepcopy(ruleset)
-            
+
         print('Number rules: %s' % str(len(sub_ruleset)))
-        sub_ruleset = RuleSet(list(filter(lambda rule: signi_test(rule, ymean, sigma, beta),
+        sub_ruleset = RuleSet(list(filter(lambda rule: rule.get_param('out') is False,
+                                          sub_ruleset)))
+        
+        print('Number rules after  condition on the coverage rate test: %s'
+              % str(len(sub_ruleset)))
+        sub_ruleset = RuleSet(list(filter(lambda rule: signi_test(rule, ymean,
+                                                                  sigma, beta),
                                           sub_ruleset)))
         print('Number rules after significant test: %s' % str(len(sub_ruleset)))
         
@@ -2083,16 +2088,16 @@ class Learning(BaseEstimator):
             features_name = self.get_param('features_name')
             
             if neg_rule is not None:
-                id_feature = neg_rule.get_param('features_index')
-                neg_rule.set_param(features_name=[features_name[id_feature]])
+                id_feature = neg_rule.conditions.get_param('features_index')[0]
+                neg_rule.conditions.set_params(features_name=[features_name[id_feature]])
                 neg_rule.calc_stats(y=y, x=X, ymean=ymean, ystd=ystd,
                                     yreal=y, cov_min=0.0, cov_max=1.0)
                 print('Add insignificant negative rule %s.' % str(neg_rule))
                 selected_rs.append(neg_rule)
                 
             if pos_rule is not None:
-                id_feature = pos_rule.get_param('features_index')
-                pos_rule.set_param(features_name=[features_name[id_feature]])
+                id_feature = pos_rule.conditions.get_param('features_index')[0]
+                pos_rule.conditions.set_params(features_name=[features_name[id_feature]])
                 pos_rule.calc_stats(y=y, x=X, ymean=ymean, ystd=ystd,
                                     yreal=y, cov_min=0.0, cov_max=1.0)
                 print('Add insignificant positive rule %s.' % str(pos_rule))
@@ -2124,7 +2129,7 @@ class Learning(BaseEstimator):
         crit_evo = [old_crit]
         nb_rules = len(ruleset)
         i = 1
-        while selected_rs.calc_coverage() < 1:
+        while selected_rs.calc_coverage() < 1 and i < nb_rules:
             new_rules = ruleset[i]
             iter_list = [None]
             
@@ -2179,9 +2184,6 @@ class Learning(BaseEstimator):
 
             i += 1
             crit_evo.append(old_crit)
-
-            if i > nb_rules:
-                break
         
         self.set_params(critlist=crit_evo)
         return selected_rs
@@ -2275,7 +2277,7 @@ class Learning(BaseEstimator):
                                  "call 'fit' before exploiting the model.")
         
         if check_input:
-            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
+            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.array
             
             n_features = X.shape[1]
             input_features = self.get_param('features_name')
@@ -2567,7 +2569,7 @@ class Learning(BaseEstimator):
         rules_names = ruleset.get_rules_name()
         
         activation_list = [rule.get_pred_vect() for rule in ruleset]
-        pred_mat = np.ndarray(activation_list)
+        pred_mat = np.array(activation_list)
         
         dist_vect = scipy_dist.pdist(pred_mat, metric=metric)
         dist_mat = scipy_dist.squareform(dist_vect)
