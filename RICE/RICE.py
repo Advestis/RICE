@@ -295,7 +295,7 @@ def union_test(ruleset, rule, j, inter_max):
 
 def calc_ruleset_crit(ruleset, yapp, yreal, ymean, ystd, method):
     """
-    Calculation of the criterium of a set of rule
+    Calculation of the criterion of a set of rule
 
     Parameters
     ----------
@@ -1578,13 +1578,13 @@ class RuleSet(object):
         using an rule based partition
         """
         # Activation of all rules in the learning set
-        activ_mat = np.matrix([rule.activation for rule in self])
+        activ_mat = np.ndarray([rule.activation for rule in self])
         
         if x is None:
             pred_mat = activ_mat.T
         else:
             pred_mat = [rule.calc_activation(x) for rule in self]
-            pred_mat = np.matrix(pred_mat).T
+            pred_mat = np.ndarray(pred_mat).T
         
         nopred_mat = np.logical_not(pred_mat)
         
@@ -1594,12 +1594,12 @@ class RuleSet(object):
         # Activation of the intersection of all activated rules at each row
         dot_activation = np.dot(pred_mat, activ_mat)
         # Activation vectors for intersection of activated rules
-        dot_activation = np.matrix(dot_activation == nb_rules_active,
+        dot_activation = np.ndarray(dot_activation == nb_rules_active,
                                    dtype='int')
         
         # Activation of the intersection of all NOT activated rules at each row
         dot_noactivation = np.dot(nopred_mat, activ_mat)
-        dot_noactivation = np.matrix(dot_noactivation,
+        dot_noactivation = np.ndarray(dot_noactivation,
                                      dtype='int')
         
         # Calculation of the binary vector for cells of the partition et each row
@@ -1780,7 +1780,7 @@ class Learning(BaseEstimator):
         """
         
         # Check type for data
-        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.matrix
+        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
         y = check_array(y, dtype=None, ensure_2d=False,
                         force_all_finite=False)  # type: np.array
 
@@ -1828,7 +1828,7 @@ class Learning(BaseEstimator):
             self.set_params(cp=cp)
         
         # Turn the matrix X in a discret matrix
-        X_discretized= self.discretize(X)
+        X_discretized = self.discretize(X)
         self.set_params(X=X_discretized)
         
         self.set_params(yreal=y)
@@ -1843,7 +1843,7 @@ class Learning(BaseEstimator):
         y_new /= ystd
         self.set_params(y=y_new)
 
-        # By independance of the noise
+        # By independence of the noise
         if hasattr(self, 'sigma'):
             sigma = self.sigma / ystd ** 2
             self.set_params(sigma=sigma)
@@ -2275,7 +2275,7 @@ class Learning(BaseEstimator):
                                  "call 'fit' before exploiting the model.")
         
         if check_input:
-            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.matrix
+            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
             
             n_features = X.shape[1]
             input_features = self.get_param('features_name')
@@ -2567,7 +2567,7 @@ class Learning(BaseEstimator):
         rules_names = ruleset.get_rules_name()
         
         activation_list = [rule.get_pred_vect() for rule in ruleset]
-        pred_mat = np.matrix(activation_list)
+        pred_mat = np.ndarray(activation_list)
         
         dist_vect = scipy_dist.pdist(pred_mat, metric=metric)
         dist_mat = scipy_dist.squareform(dist_vect)
