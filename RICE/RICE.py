@@ -111,7 +111,7 @@ def make_rules(feature_name, feature_index, X, y, method,
     xcol = X[:, feature_index]
     
     try:
-        xcol = np.array(xcol, dtype=np.float64)
+        xcol = np.array(xcol, dtype=np.float)
         notnan_vect = np.extract(np.isfinite(xcol), xcol)
         values = list(map(float, np.sort(list(set(notnan_vect)))))
     except ValueError:
@@ -875,7 +875,7 @@ def discretize(xcol, nb_bucket, bins=None):
     xcol_discretized : {Series type}
                        The discretization of xcol
     """
-    if xcol.dtype.type != np.object_:
+    if np.issubdtype(xcol.dtype, np.floating):
         # extraction of the list of xcol values
         notnan_vect = np.extract(np.isfinite(xcol), xcol)
         nan_index = ~np.isfinite(xcol)
@@ -925,7 +925,7 @@ class RuleConditions(object):
             'Type of parameter must be iterable tuple, list or array' % features_name
         assert len(bmax) == cp, \
             'Parameters must have the same length' % features_name
-        if type(bmin[0]) != np.string_:
+        if type(bmin[0]) != str:
             assert all(map(lambda a, b: a <= b, bmin, bmax)), \
                 'Bmin must be smaller or equal than bmax (%s)' \
                 % features_name
@@ -1599,7 +1599,7 @@ class RuleSet(object):
         # Activation of the intersection of all NOT activated rules at each row
         dot_noactivation = np.dot(nopred_mat, activ_mat)
         dot_noactivation = np.array(dot_noactivation,
-                                     dtype='int')
+                                    dtype='int')
         
         # Calculation of the binary vector for cells of the partition et each row
         cells = ((dot_activation - dot_noactivation) > 0)
@@ -1779,9 +1779,9 @@ class Learning(BaseEstimator):
         """
         
         # Check type for data
-        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.array
+        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
         y = check_array(y, dtype=None, ensure_2d=False,
-                        force_all_finite=False)  # type: np.array
+                        force_all_finite=False)  # type: np.ndarray
 
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
@@ -2277,7 +2277,7 @@ class Learning(BaseEstimator):
                                  "call 'fit' before exploiting the model.")
         
         if check_input:
-            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.array
+            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
             
             n_features = X.shape[1]
             input_features = self.get_param('features_name')
@@ -2312,29 +2312,29 @@ class Learning(BaseEstimator):
         
         x_mat = []
         for i in range(nb_col):
-            x_col = x[:, i]
+            xcol = x[:, i]
             try:
-                x_col = np.array(x_col.flat, dtype=np.float64)
+                xcol = np.array(xcol.flat, dtype=np.float)
             except ValueError:
-                x_col = np.array(x_col.flat, dtype=np.str)
+                xcol = np.array(xcol.flat, dtype=np.str)
             
             var_name = features_name[i]
-            
-            if x_col.dtype.type != np.string_:
+
+            if np.issubdtype(xcol.dtype, np.floating):
                 if var_name not in bins_dict:
-                    if len(set(x_col)) >= nb_bucket:
-                        bins = find_bins(x_col, nb_bucket)
-                        col = discretize(x_col, nb_bucket, bins)
+                    if len(set(xcol)) >= nb_bucket:
+                        bins = find_bins(xcol, nb_bucket)
+                        discretized_col = discretize(xcol, nb_bucket, bins)
                         bins_dict[var_name] = bins
                     else:
-                        col = x_col
+                        discretized_col = xcol
                 else:
                     bins = bins_dict[var_name]
-                    col = discretize(x_col, nb_bucket, bins)
+                    discretized_col = discretize(xcol, nb_bucket, bins)
             else:
-                col = x_col
+                discretized_col = xcol
             
-            x_mat.append(col)
+            x_mat.append(discretized_col)
         
         return np.array(x_mat).T
     
