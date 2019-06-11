@@ -1728,6 +1728,9 @@ class Learning(BaseEstimator):
         fullselection : {boolean type} default True
                         Choose if the selection is among all complexity (True)
                         or a selection by complexity (False)
+                        
+        minimize_risk : {boolean type} default False
+                        To use the risk minimizer function to select significant rules
         """
         self.selected_rs = RuleSet([])
         self.ruleset = RuleSet([])
@@ -1753,6 +1756,9 @@ class Learning(BaseEstimator):
         
         if hasattr(self, 'maximized') is False:
             self.maximized = False
+        
+        if hasattr(self, 'minimize_risk') is False:
+            self.minimize_risk = False
     
     def __repr__(self):
         return self.__str__()
@@ -2076,8 +2082,12 @@ class Learning(BaseEstimator):
         print('Number rules after significant test: %s' % str(len(sub_ruleset)))
         
         if len(sub_ruleset) > 0:
-            sub_ruleset.sort_by('crit', maximized)
-            selected_rs = self.minimized_risk(sub_ruleset)
+            
+            if self.minimize_risk:
+                selected_rs = self.minimized_risk(sub_ruleset)
+            else:
+                selected_rs = self.select(sub_ruleset)
+            
         else:
             selected_rs = RuleSet([])
             print('No rules selected!')
@@ -2120,7 +2130,7 @@ class Learning(BaseEstimator):
         maximized = self.get_param('maximized')
         inter_max = self.get_param('intermax')
         
-        # win = 10
+        ruleset.sort_by('crit', maximized)
 
         # Then optimization
         selected_rs = RuleSet(ruleset[:1])
@@ -2187,7 +2197,49 @@ class Learning(BaseEstimator):
         
         self.set_params(critlist=crit_evo)
         return selected_rs
+
+    def select(self, ruleset):
+        yapp = self.get_param('y')
+        yreal = self.get_param('yreal')
+        ystd = self.get_param('ystd')
+        ymean = self.get_param('ymean')
+        method = self.get_param('calcmethod')
+        inter_max = self.get_param('intermax')
+
+        ruleset.sort_by('cov', True)
+        
+        # Then optimization
+        selected_rs = RuleSet(ruleset[:1])
+        old_crit = calc_ruleset_crit(selected_rs, yapp, yreal,
+                                     ymean, ystd, method)
+        crit_evo = [old_crit]
+        nb_rules = len(ruleset)
     
+        i = 1
+        while selected_rs.calc_coverage() < 1 and i < nb_rules:
+            ruleset_copy = copy.deepcopy(selected_rs)
+            new_rules = ruleset[i]
+        
+            utest = [new_rules.union_test(rule.get_activation(),
+                                          inter_max)
+                     for rule in ruleset_copy]
+        
+            if all(utest) and new_rules.union_test(selected_rs.calc_activation(),
+                                                   inter_max):
+                new_rs = copy.deepcopy(selected_rs)
+                new_rs.append(new_rules)
+                new_crit = calc_ruleset_crit(new_rs, yapp, yreal,
+                                             ymean, ystd, method)
+            
+                selected_rs = copy.deepcopy(new_rs)
+                old_crit = new_crit
+        
+            crit_evo.append(old_crit)
+            i += 1
+    
+        self.set_params(critlist=crit_evo)
+        return selected_rs
+
     def predict(self, X, check_input=True):
         """
         Predict regression target for X.
