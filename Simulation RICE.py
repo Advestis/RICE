@@ -1,12 +1,11 @@
 import copy
-import operator
 
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from sklearn.datasets import make_regression, make_classification
 
 import RICE
+
 
 def make_y(x, noise, th_min=-0.4, th_max=0.4):
     y_vect = [-2 if x_val <= th_min else
@@ -14,6 +13,7 @@ def make_y(x, noise, th_min=-0.4, th_max=0.4):
               2 for x_val in x]
     y_vect += np.random.normal(0, noise, len(y_vect))
     return np.array(y_vect)
+
 
 def make_condition(rg):
     rep = ''
@@ -32,6 +32,7 @@ def make_condition(rg):
             rep += ']'
     return rep
 
+
 nRows = 5000
 nCols = 2
 noise = 1.0
@@ -41,7 +42,7 @@ np.random.seed(42)
 X = np.random.uniform(low=-1, high=1,
                       size=(nRows, nCols))
 
-cm = plt.cm.coolwarm # plt.cm.binary
+cm = plt.cm.coolwarm  # plt.cm.binary
 
 
 def test_min(bins, df, rg_id):
@@ -73,6 +74,7 @@ def test_max(bins, df, rg_id, nb_bucket):
     
     return bmax
 
+
 def Mrn(rg1, rs):
     act = copy.copy(rg1.get_param('activation'))
     for rg2 in rs:
@@ -80,9 +82,6 @@ def Mrn(rg1, rs):
         act = np.array(act)
     return max(act) - 1
 
-nb_bucket = 10
-intermax = 1.0 # 1.0 - np.finfo(float).eps #0.8 #
-recovory = False
 
 x_vect = X[:, 0]
 th_min = -0.4
@@ -98,7 +97,7 @@ rice_lin = RICE.Learning()
 
 rice_lin.fit(X_train, y_train)
 
-x_min, x_max = X[:, 0].min(), X[:, 0].max() + h  # add left and right marges
+x_min, x_max = X[:, 0].min(), X[:, 0].max() + h  # add left and right margins
 y_min, y_max = X[:, 1].min(), X[:, 1].max() + h
 xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
                      np.arange(y_min, y_max, h))

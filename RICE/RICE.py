@@ -610,7 +610,7 @@ def signi_test(rule, ymean, sigma, beta):
     ------
     The bound for the conditional expectation to be significant
     """
-    return beta*abs(rule.get_param('pred') - ymean) >= np.sqrt(rule.get_param('var') - sigma)
+    return beta * abs(rule.get_param('pred') - ymean) >= np.sqrt(rule.get_param('var') - sigma)
 
 
 def calc_zscore(active_vect, y, th):
@@ -1791,11 +1791,11 @@ class Learning(BaseEstimator):
 
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
-            beta = 1./pow(X.shape[0], 1./4 - self.alpha/2.)
+            beta = 1. / pow(X.shape[0], 1./4 - self.alpha/2.)
             self.set_params(beta=beta)
         
         if hasattr(self, 'covmin') is False:
-            covmin = 1./pow(X.shape[0], self.alpha)
+            covmin = 1. / pow(X.shape[0], self.alpha)
             self.set_params(covmin=covmin)
             
         if hasattr(self, 'nb_bucket') is False:
@@ -2013,18 +2013,19 @@ class Learning(BaseEstimator):
         Returns the intersection of all suitable rules
         for a given complexity (cp)
         """
-        ruleset_cp1 = self.select_candidates(1)
+        rules_list = []
+        for i in range(1, int(cp/2)):
+            ruleset_cp1 = self.select_candidates(i)
         
-        ruleset_candidate = self.select_candidates(cp - 1)
+            ruleset_candidate = self.select_candidates(cp - i)
         
-        if len(ruleset_candidate) > 0:
-            rules_list = self.find_complexe_rules(cp, ruleset_cp1,
-                                                  ruleset_candidate)
-            
-            return rules_list
-        else:
-            return []
-    
+            if len(ruleset_candidate) > 0:
+                inter_list = self.find_complexe_rules(cp, ruleset_cp1,
+                                                      ruleset_candidate)
+                rules_list.append(inter_list)
+                
+        return rules_list
+
     def find_complexe_rules(self, cp, ruleset_cp1, ruleset_candidate):
         """
         Returns a list of Rule object designing by intersection of rule from
