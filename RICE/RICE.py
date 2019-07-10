@@ -65,8 +65,8 @@ def make_condition(rule):
     return conditions_str
 
 
-def make_rules(feature_name, feature_index, X, y, method,
-               cov_min, cov_max, yreal, ymean, ystd):
+def make_rules(feature_name, feature_index, X, y,
+               method, cov_min, cov_max):
     """
     Evaluate all suitable rules (i.e satisfying all criteria)
     on a given feature.
@@ -93,15 +93,6 @@ def make_rules(feature_name, feature_index, X, y, method,
 
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
-
-    yreal : {array-like, shape = [n]}
-            The real target values (real numbers).
-
-    ymean : {float type}
-            The mean of y.
-
-    ystd : {float type}
-           The standard deviation of y.
 
     Return
     ------
@@ -132,8 +123,7 @@ def make_rules(feature_name, feature_index, X, y, method,
                                             values=values)
                 
                 rule = Rule(conditions)
-                rules_list.append(eval_rule(rule, X, y, method, cov_min,
-                                            cov_max, yreal, ymean, ystd))
+                rules_list.append(eval_rule(rule, X, y, method, cov_min, cov_max))
         
         else:
             bmax = bmin
@@ -146,15 +136,13 @@ def make_rules(feature_name, feature_index, X, y, method,
                                         values=values)
             
             rule = Rule(conditions)
-            rules_list.append(eval_rule(rule, X, y, method, cov_min,
-                                        cov_max, yreal, ymean, ystd))
+            rules_list.append(eval_rule(rule, X, y, method, cov_min, cov_max))
     
     rules_list = list(filter(None, rules_list))
     return rules_list
 
 
-def eval_rule(rule, X, y, method, cov_min,
-              cov_max, yreal, ymean, ystd):
+def eval_rule(rule, X, y, method, cov_min, cov_max):
     """
     Calculation of all statistics of an rules
 
@@ -178,16 +166,6 @@ def eval_rule(rule, X, y, method, cov_min,
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
 
-    yreal : {array-like, shape = [n]}
-            The real target values (real numbers).
-
-    ymean : {float type}
-            The mean of y.
-
-    ystd : {float type}
-           The standard deviation of y.
-
-
     Return
     ------
     None : if the rule does not verified criteria
@@ -197,8 +175,7 @@ def eval_rule(rule, X, y, method, cov_min,
 
     """
     rule.calc_stats(x=X, y=y, method=method, cov_min=cov_min,
-                    cov_max=cov_max, yreal=yreal, ymean=ymean,
-                    ystd=ystd)
+                    cov_max=cov_max)
     
     if rule.get_param('out') is False:
         return rule
@@ -293,7 +270,7 @@ def union_test(ruleset, rule, j, inter_max):
             return None
 
 
-def calc_ruleset_crit(ruleset, yapp, yreal, ymean, ystd, method):
+def calc_ruleset_crit(ruleset, yapp, method):
     """
     Calculation of the criterion of a set of rule
 
@@ -304,16 +281,7 @@ def calc_ruleset_crit(ruleset, yapp, yreal, ymean, ystd, method):
 
     yapp : {array-like, shape = [n]}
            The normalized target values (real numbers).
-
-    yreal : {array-like, shape = [n]}
-            The real target values (real numbers).
-
-    ymean : {float type}
-            The mean of y.
-
-    ystd : {float type}
-           The standard deviation of y.
-
+           
     method : {string type}
              The method mse_function or mse_function criterion
 
@@ -323,7 +291,7 @@ def calc_ruleset_crit(ruleset, yapp, yreal, ymean, ystd, method):
            The value of the criteria for the method
     """
     pred_vect = ruleset.calc_pred(y_app=yapp)
-    crit = calc_crit(pred_vect, yreal, ymean, ystd, method)
+    crit = calc_crit(pred_vect, yapp, method)
     return crit
 
 
@@ -353,40 +321,50 @@ def add_insignificant_rule(rs, X, y):
     neg_rule = None
     pos_rule = None
     if sum(no_rule_act) > 0:
-        no_rule_act_pos = np.array(y * no_rule_act > 0)
-        no_rule_act_neg = np.array(y * no_rule_act < 0)
-    
         neg_rule_list = []
         neg_rule_cov = []
         pos_rule_list = []
         pos_rule_cov = []
     
         for i in range(X.shape[1]):
-            if sum(no_rule_act_neg) > 0:
-                x_neg = np.extract(no_rule_act_neg, X[:, i])
-                neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
-                                                  bmax=[x_neg.max()],
-                                                  features_name=[''],
-                                                  features_index=[i],
-                                                  xmax=[X[:, i].max()],
-                                                  xmin=[X[:, i].min()]))
-                neg_rule_list.append(neg_no_rule)
-                active_vect = neg_no_rule.calc_activation(x=X)
-                neg_rule_cov.append(calc_coverage(active_vect))
-        
-            if sum(no_rule_act_pos) > 0:
-                x_pos = np.extract(no_rule_act_pos, X[:, i])
-                pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
-                                                  bmax=[x_pos.max()],
-                                                  features_name=[''],
-                                                  features_index=[i],
-                                                  xmax=[X[:, i].max()],
-                                                  xmin=[X[:, i].min()]))
+            try:
+                sub_x = X[:, i].astype('float')
+            except ValueError:
+                sub_x = None
             
-                pos_rule_list.append(pos_no_rule)
-                active_vect = pos_no_rule.calc_activation(x=X)
-                pos_rule_cov.append(calc_coverage(active_vect))
+            if sub_x is not None:
+                sub_no_rule_act = no_rule_act[~np.isnan(sub_x)]
+                sub_y = y[~np.isnan(sub_x)]
+                sub_x = sub_x[~np.isnan(sub_x)]
     
+                no_rule_act_pos = np.array(sub_y * sub_no_rule_act > 0)
+                no_rule_act_neg = np.array(sub_y * sub_no_rule_act < 0)
+                
+                if sum(no_rule_act_neg) > 0:
+                    x_neg = np.extract(no_rule_act_neg, sub_x)
+                    neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
+                                                      bmax=[x_neg.max()],
+                                                      features_name=[''],
+                                                      features_index=[i],
+                                                      xmax=[sub_x.max()],
+                                                      xmin=[sub_x.min()]))
+                    neg_rule_list.append(neg_no_rule)
+                    active_vect = neg_no_rule.calc_activation(x=X)
+                    neg_rule_cov.append(calc_coverage(active_vect))
+    
+                if sum(no_rule_act_pos) > 0:
+                    x_pos = np.extract(no_rule_act_pos, sub_x)
+                    pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
+                                                      bmax=[x_pos.max()],
+                                                      features_name=[''],
+                                                      features_index=[i],
+                                                      xmax=[sub_x.max()],
+                                                      xmin=[sub_x.min()]))
+        
+                    pos_rule_list.append(pos_no_rule)
+                    active_vect = pos_no_rule.calc_activation(x=X)
+                    pos_rule_cov.append(calc_coverage(active_vect))
+                
         if len(neg_rule_list) > 0:
             neg_rule = neg_rule_list[neg_rule_cov.index(min(neg_rule_cov))]
         if len(pos_rule_list) > 0:
@@ -540,9 +518,7 @@ def calc_maximal_bend(vect):
     return np.argmax(bend)
 
 
-def calc_crit(pred_vect, y,
-              ymean=0, ystd=1,
-              method='mse_function'):
+def calc_crit(pred_vect, y, method='mse_function'):
     """
     Compute the criteria
 
@@ -556,12 +532,6 @@ def calc_crit(pred_vect, y,
     y : {array type}
         The real target values (real numbers)
 
-    ymean : {float type}
-            The mean of y.
-
-    ystd : {float type}
-           The standard deviation of y.
-
     method : {string type}
              The method mse_function or mse_function criterion
 
@@ -570,13 +540,7 @@ def calc_crit(pred_vect, y,
     crit : {float type}
            Criteria value
     """
-    
-    pred_vect *= ystd
-    pred_vect += ymean
     y_fillna = np.nan_to_num(y)
-    
-    # pred_vect = np.extract(y_fillna != 0, pred_vect)
-    # y_fillna = np.extract(y_fillna != 0, y_fillna)
     
     if method == 'mse_function':
         crit = mse_function(pred_vect, y_fillna)
@@ -611,6 +575,10 @@ def signi_test(rule, ymean, sigma, beta):
     The bound for the conditional expectation to be significant
     """
     return beta * abs(rule.get_param('pred') - ymean) >= np.sqrt(rule.get_param('var') - sigma)
+
+
+def insigni_test(rule, sigma, epsilon):
+    return epsilon >= np.sqrt(rule.get_param('var') - sigma)
 
 
 def calc_zscore(active_vect, y, th):
@@ -1204,8 +1172,7 @@ class Rule(object):
             return None
     
     def calc_stats(self, x, y, method='mse_function',
-                   cov_min=0.01, cov_max=0.5, yreal=None,
-                   ymean=0, ystd=1):
+                   cov_min=0.01, cov_max=0.5):
         """
         Calculation of all statistics of an rules
 
@@ -1225,15 +1192,6 @@ class Rule(object):
 
         cov_max : {float type such as 0 <= covmax <= 1}, default 0.5
                   The maximal coverage of one rule
-
-        yreal : {array-like, shape = [n]}, default None
-                The real target values (real numbers).
-
-        ymean : {float type}, default 0
-                The mean of y.
-
-        ystd : {float type}, default 1
-               The standard deviation of y.
 
         Return
         ------
@@ -1256,14 +1214,11 @@ class Rule(object):
         cond_var = calc_variance(active_vect, y)
         self.set_params(var=cond_var)
         
-        if yreal is None:
-            yreal = y
-        
         pred_vect = active_vect * pred
         cplt_val = calc_prediction(1 - active_vect, y)
         np.place(pred_vect, pred_vect == 0, cplt_val)
         
-        rez = calc_crit(pred_vect, yreal, ymean, ystd, method)
+        rez = calc_crit(pred_vect, y, method)
         self.set_params(crit=rez)
     
     def calc_activation(self, x=None):
@@ -1632,12 +1587,12 @@ class RuleSet(object):
             cov = 0.0
         return cov
     
-    def predict(self, y_app, x, ymean, ystd):
+    def predict(self, y_app, x):
         """
         Computes the prediction vector for a given X and a given aggregation method
         """
         pred_vect = self.calc_pred(y_app, x)
-        return pred_vect * ystd + ymean
+        return pred_vect
     
     def make_rule_names(self):
         """
@@ -1735,6 +1690,7 @@ class Learning(BaseEstimator):
         self.selected_rs = RuleSet([])
         self.ruleset = RuleSet([])
         self.bins = dict()
+        self.crit_evo = []
         
         for arg, val in parameters.items():
             setattr(self, arg, val)
@@ -1786,21 +1742,24 @@ class Learning(BaseEstimator):
         
         # Check type for data
         X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
-        y = check_array(y, dtype=None, ensure_2d=False,
-                        force_all_finite=False)  # type: np.ndarray
+        y = check_array(y, dtype=None, ensure_2d=False, force_all_finite=False)  # type: np.ndarray
 
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
-            beta = 1. / pow(X.shape[0], 1./4 - self.alpha/2.)
+            beta = 1. / pow(X.shape[0], 1. / 4 - self.alpha / 2.)
             self.set_params(beta=beta)
         
+        if hasattr(self, 'epsilon') is False:
+            beta = self.get_param('beta')
+            epsilon = beta * np.std(y)
+            self.set_params(epsilon=epsilon)
+            
         if hasattr(self, 'covmin') is False:
             covmin = 1. / pow(X.shape[0], self.alpha)
             self.set_params(covmin=covmin)
             
         if hasattr(self, 'nb_bucket') is False:
-            nb_bucket = max(5, int(np.sqrt(pow(X.shape[0],
-                                               1. / X.shape[1]))))
+            nb_bucket = max(5, int(np.sqrt(pow(X.shape[0], 1. / X.shape[1]))))
             
             nb_bucket = min(nb_bucket, X.shape[0])
             self.set_params(nb_bucket=nb_bucket)
@@ -1836,22 +1795,13 @@ class Learning(BaseEstimator):
         X_discretized = self.discretize(X)
         self.set_params(X=X_discretized)
         
-        self.set_params(yreal=y)
-        
         # Normalization of y
         ymean = np.nanmean(y)
         ystd = np.nanstd(y)
         self.set_params(ymean=ymean)
         self.set_params(ystd=ystd)
         
-        y_new = y - ymean
-        y_new /= ystd
-        self.set_params(y=y_new)
-
-        # By independence of the noise
-        if hasattr(self, 'sigma'):
-            sigma = self.sigma / ystd ** 2
-            self.set_params(sigma=sigma)
+        self.set_params(y=y)
         
         # looking for good rules
         self.find_rules()  # works in columns not in lines
@@ -1924,9 +1874,6 @@ class Learning(BaseEstimator):
         X = self.get_param('X')
         method = self.get_param('calcmethod')
         y = self.get_param('y')
-        yreal = self.get_param('yreal')
-        ymean = self.get_param('ymean')
-        ystd = self.get_param('ystd')
         cov_max = self.get_param('covmax')
         cov_min = self.get_param('covmin')
         
@@ -1934,13 +1881,11 @@ class Learning(BaseEstimator):
         
         if jobs == 1:
             ruleset = list(map(lambda var, idx: make_rules(var, idx, X, y, method,
-                                                           cov_min, cov_max,
-                                                           yreal, ymean, ystd),
+                                                           cov_min, cov_max),
                                features_name, features_index))
         else:
             ruleset = Parallel(n_jobs=jobs, backend="multiprocessing")(
-                delayed(make_rules)(var, idx, X, y, method, cov_min,
-                                    cov_max, yreal, ymean, ystd)
+                delayed(make_rules)(var, idx, X, y, method, cov_min, cov_max)
                 for var, idx in zip(features_name, features_index))
         
         ruleset = functools.reduce(operator.add, ruleset)
@@ -1958,9 +1903,6 @@ class Learning(BaseEstimator):
         X = self.get_param('X')
         method = self.get_param('calcmethod')
         y = self.get_param('y')
-        yreal = self.get_param('yreal')
-        ymean = self.get_param('ymean')
-        ystd = self.get_param('ystd')
         cov_max = self.get_param('covmax')
         cov_min = self.get_param('covmin')
         
@@ -1968,19 +1910,17 @@ class Learning(BaseEstimator):
         
         if len(rules_list) > 0:
             if nb_jobs == 1:
-                ruleset = [eval_rule(rule, X, y, method, cov_min,
-                                     cov_max, yreal, ymean, ystd)
-                           for rule in rules_list]
+                rs = [eval_rule(rule, X, y, method, cov_min, cov_max)
+                      for rule in rules_list]
             else:
-                ruleset = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                    delayed(eval_rule)(rule, X, y, method, cov_min,
-                                       cov_max, yreal, ymean, ystd)
+                rs = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
+                    delayed(eval_rule)(rule, X, y, method, cov_min, cov_max)
                     for rule in rules_list)
             
-            ruleset = list(filter(None, ruleset))
-            ruleset_cpup = RuleSet(ruleset)
-            ruleset_cpup = ruleset_cpup.drop_duplicates()
-            return ruleset_cpup
+            rs = list(filter(None, rs))
+            rs_cpup = RuleSet(rs)
+            rs_cpup = rs_cpup.drop_duplicates()
+            return rs_cpup
         else:
             return []
     
@@ -2014,15 +1954,16 @@ class Learning(BaseEstimator):
         for a given complexity (cp)
         """
         rules_list = []
-        for i in range(1, int(cp/2)):
-            ruleset_cp1 = self.select_candidates(i)
+        i_max = int(cp / 2) + 1
+        for i in range(1, i_max):
+            rs_cp1 = self.select_candidates(i)
         
-            ruleset_candidate = self.select_candidates(cp - i)
+            rs_candidate = self.select_candidates(cp - i)
         
-            if len(ruleset_candidate) > 0:
-                inter_list = self.find_complexe_rules(cp, ruleset_cp1,
-                                                      ruleset_candidate)
-                rules_list.append(inter_list)
+            if len(rs_candidate) > 0:
+                inter_list = self.find_complexe_rules(cp, rs_cp1,
+                                                      rs_candidate)
+                rules_list += inter_list
                 
         return rules_list
 
@@ -2052,19 +1993,15 @@ class Learning(BaseEstimator):
         Returns a subset of a given ruleset.
         This subset minimizes the empirical contrast on the learning set
         """
-        maximized = self.get_param('maximized')
+        # maximized = self.get_param('maximized')
         ymean = self.get_param('ymean')
-        ystd = self.get_param('ystd')
+        # ystd = self.get_param('ystd')
         ruleset = self.get_param('ruleset')
         beta = self.get_param('beta')
+        epsilon = self.get_param('epsilon')
+        
         X = self.get_param('X')
         y = self.get_param('y')
-        
-        if hasattr(self, 'sigma'):
-            sigma = self.get_param('sigma')
-        else:
-            sigma = min(ruleset.get_rules_param('var'))
-            self.set_params(sigma=sigma)
         
         if cp > 0:
             sub_ruleset = ruleset.extract_cp(cp)
@@ -2075,25 +2012,43 @@ class Learning(BaseEstimator):
         sub_ruleset = RuleSet(list(filter(lambda rule: rule.get_param('out') is False,
                                           sub_ruleset)))
         
+        if hasattr(self, 'sigma'):
+            sigma = self.get_param('sigma')
+        else:
+            sigma = min(sub_ruleset.get_rules_param('var'))
+            self.set_params(sigma=sigma)
+            
         print('Number rules after  condition on the coverage rate test: %s'
               % str(len(sub_ruleset)))
-        sub_ruleset = RuleSet(list(filter(lambda rule: signi_test(rule, ymean,
-                                                                  sigma, beta),
-                                          sub_ruleset)))
+        signi_ruleset = RuleSet(list(filter(lambda rule: signi_test(rule, ymean,
+                                                                    sigma, beta),
+                                            sub_ruleset)))
         print('Number rules after significant test: %s' % str(len(sub_ruleset)))
-        
-        if len(sub_ruleset) > 0:
-            
-            if self.minimize_risk:
-                selected_rs = self.minimized_risk(sub_ruleset)
-            else:
-                selected_rs = self.select(sub_ruleset)
-            
+
+        if len(signi_ruleset) > 0:
+            signi_ruleset.sort_by('cov', True)
+            rg_add, selected_rs = self.fast_select(signi_ruleset)
+            print('Number rules significant selected rules: %s' % str(rg_add))
+
         else:
             selected_rs = RuleSet([])
             print('No rules selected!')
-        
+
         # Add insignificant rules
+        if selected_rs.calc_coverage() < 1:
+            insigni_ruleset = RuleSet(list(filter(lambda rule: insigni_test(rule, sigma,
+                                                                            epsilon),
+                                                  sub_ruleset)))
+            print('Number rules after insignificant test: %s' % str(len(insigni_ruleset)))
+
+            insigni_ruleset.sort_by('cov', True)
+            rg_add, selected_rs = self.fast_select(insigni_ruleset, selected_rs)
+            print('Number insignificant rules added : %s' % str(rg_add))
+
+        else:
+            print('Covering completed. No insignificant rule added')
+                
+        # Add rule to have a covering
         if selected_rs.calc_coverage() < 1:
             neg_rule, pos_rule = add_insignificant_rule(selected_rs, X, y)
             features_name = self.get_param('features_name')
@@ -2101,16 +2056,14 @@ class Learning(BaseEstimator):
             if neg_rule is not None:
                 id_feature = neg_rule.conditions.get_param('features_index')[0]
                 neg_rule.conditions.set_params(features_name=[features_name[id_feature]])
-                neg_rule.calc_stats(y=y, x=X, ymean=ymean, ystd=ystd,
-                                    yreal=y, cov_min=0.0, cov_max=1.0)
+                neg_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
                 print('Add insignificant negative rule %s.' % str(neg_rule))
                 selected_rs.append(neg_rule)
                 
             if pos_rule is not None:
                 id_feature = pos_rule.conditions.get_param('features_index')[0]
                 pos_rule.conditions.set_params(features_name=[features_name[id_feature]])
-                pos_rule.calc_stats(y=y, x=X, ymean=ymean, ystd=ystd,
-                                    yreal=y, cov_min=0.0, cov_max=1.0)
+                pos_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
                 print('Add insignificant positive rule %s.' % str(pos_rule))
                 selected_rs.append(pos_rule)
         else:
@@ -2118,92 +2071,135 @@ class Learning(BaseEstimator):
             
         return selected_rs
 
-    def minimized_risk(self, ruleset):
-        """
-        Returns a subset of a given ruleset. This subset is seeking by
-        minimization/maximization of the criterion on the training set
-        """
+    # def minimized_risk(self, ruleset):
+    #     """
+    #     Returns a subset of a given ruleset. This subset is seeking by
+    #     minimization/maximization of the criterion on the training set
+    #     """
+    #     yapp = self.get_param('y')
+    #     yreal = self.get_param('yreal')
+    #     ystd = self.get_param('ystd')
+    #     ymean = self.get_param('ymean')
+    #     method = self.get_param('calcmethod')
+    #     maximized = self.get_param('maximized')
+    #     inter_max = self.get_param('intermax')
+    #
+    #     ruleset.sort_by('crit', maximized)
+    #
+    #     # Then optimization
+    #     selected_rs = RuleSet(ruleset[:1])
+    #     old_crit = calc_ruleset_crit(selected_rs, yapp, yreal,
+    #                                  ymean, ystd, method)
+    #     crit_evo = [old_crit]
+    #     nb_rules = len(ruleset)
+    #     i = 1
+    #     while selected_rs.calc_coverage() < 1 and i < nb_rules:
+    #         new_rules = ruleset[i]
+    #         iter_list = [None]
+    #
+    #         if len(selected_rs) > 1:
+    #             iter_list += range(len(selected_rs))
+    #
+    #         ruleset_list = []
+    #         for j in iter_list:
+    #             break_loop = False
+    #             ruleset_copy = copy.deepcopy(selected_rs)
+    #             if j is not None:
+    #                 ruleset_copy.pop(j)
+    #                 if new_rules.union_test(ruleset_copy.calc_activation(),
+    #                                         inter_max):
+    #                     if len(ruleset_copy) > 1:
+    #                         for rules in ruleset_copy:
+    #                             utest = new_rules.union_test(rules.get_activation(),
+    #                                                          inter_max)
+    #                             if not utest:
+    #                                 break_loop = True
+    #                                 break
+    #                     if break_loop:
+    #                         continue
+    #
+    #                     ruleset_copy.insert(j, new_rules)
+    #                     ruleset_list.append(ruleset_copy)
+    #                 else:
+    #                     continue
+    #
+    #             else:
+    #                 utest = [new_rules.union_test(e.get_activation(), inter_max)
+    #                          for e in ruleset_copy]
+    #                 if all(utest) and new_rules.union_test(ruleset_copy.calc_activation(),
+    #                                                        inter_max):
+    #                     ruleset_copy.append(new_rules)
+    #                     ruleset_list.append(ruleset_copy)
+    #
+    #         if len(ruleset_list) > 0:
+    #             crit_list = [calc_ruleset_crit(e, yapp, yreal, ymean, ystd, method)
+    #                          for e in ruleset_list]
+    #
+    #             if maximized:
+    #                 ruleset_idx = int(np.argmax(crit_list))
+    #                 if crit_list[ruleset_idx] >= old_crit:
+    #                     selected_rs = copy.deepcopy(ruleset_list[ruleset_idx])
+    #                     old_crit = crit_list[ruleset_idx]
+    #             else:
+    #                 ruleset_idx = int(np.argmin(crit_list))
+    #                 if crit_list[ruleset_idx] <= old_crit:
+    #                     selected_rs = copy.deepcopy(ruleset_list[ruleset_idx])
+    #                     old_crit = crit_list[ruleset_idx]
+    #
+    #         i += 1
+    #         crit_evo.append(old_crit)
+    #
+    #     self.set_params(critlist=crit_evo)
+    #     return selected_rs
+
+    def fast_select(self, ruleset, selected_rs=None):
         yapp = self.get_param('y')
-        yreal = self.get_param('yreal')
-        ystd = self.get_param('ystd')
-        ymean = self.get_param('ymean')
+
         method = self.get_param('calcmethod')
-        maximized = self.get_param('maximized')
         inter_max = self.get_param('intermax')
-        
-        ruleset.sort_by('crit', maximized)
-
-        # Then optimization
-        selected_rs = RuleSet(ruleset[:1])
-        old_crit = calc_ruleset_crit(selected_rs, yapp, yreal,
-                                     ymean, ystd, method)
-        crit_evo = [old_crit]
+        crit_evo = self.get_param('crit_evo')
+    
+        if selected_rs is None:
+            selected_rs = RuleSet(ruleset[:1])
+            i = 1
+            rg_add = 1
+        else:
+            i = 0
+            rg_add = 0
+    
+        old_crit = calc_ruleset_crit(selected_rs, yapp, method)
+        crit_evo.append(old_crit)
         nb_rules = len(ruleset)
-        i = 1
+    
         while selected_rs.calc_coverage() < 1 and i < nb_rules:
+            ruleset_copy = copy.deepcopy(selected_rs)
             new_rules = ruleset[i]
-            iter_list = [None]
-            
-            if len(selected_rs) > 1:
-                iter_list += range(len(selected_rs))
-            
-            ruleset_list = []
-            for j in iter_list:
-                break_loop = False
-                ruleset_copy = copy.deepcopy(selected_rs)
-                if j is not None:
-                    ruleset_copy.pop(j)
-                    if new_rules.union_test(ruleset_copy.calc_activation(),
-                                            inter_max):
-                        if len(ruleset_copy) > 1:
-                            for rules in ruleset_copy:
-                                utest = new_rules.union_test(rules.get_activation(),
-                                                             inter_max)
-                                if not utest:
-                                    break_loop = True
-                                    break
-                        if break_loop:
-                            continue
-                        
-                        ruleset_copy.insert(j, new_rules)
-                        ruleset_list.append(ruleset_copy)
-                    else:
-                        continue
-                
-                else:
-                    utest = [new_rules.union_test(e.get_activation(), inter_max)
-                             for e in ruleset_copy]
-                    if all(utest) and new_rules.union_test(ruleset_copy.calc_activation(),
-                                                           inter_max):
-                        ruleset_copy.append(new_rules)
-                        ruleset_list.append(ruleset_copy)
-            
-            if len(ruleset_list) > 0:
-                crit_list = [calc_ruleset_crit(e, yapp, yreal, ymean, ystd, method)
-                             for e in ruleset_list]
-                
-                if maximized:
-                    ruleset_idx = int(np.argmax(crit_list))
-                    if crit_list[ruleset_idx] >= old_crit:
-                        selected_rs = copy.deepcopy(ruleset_list[ruleset_idx])
-                        old_crit = crit_list[ruleset_idx]
-                else:
-                    ruleset_idx = int(np.argmin(crit_list))
-                    if crit_list[ruleset_idx] <= old_crit:
-                        selected_rs = copy.deepcopy(ruleset_list[ruleset_idx])
-                        old_crit = crit_list[ruleset_idx]
-
-            i += 1
-            crit_evo.append(old_crit)
         
-        self.set_params(critlist=crit_evo)
-        return selected_rs
-
+            utest = [new_rules.union_test(rule.get_activation(),
+                                          inter_max)
+                     for rule in ruleset_copy]
+        
+            if all(utest) and new_rules.union_test(selected_rs.calc_activation(),
+                                                   inter_max):
+                new_rs = copy.deepcopy(selected_rs)
+                new_rs.append(new_rules)
+                new_crit = calc_ruleset_crit(new_rs, yapp, method)
+            
+                selected_rs = copy.deepcopy(new_rs)
+                old_crit = new_crit
+                rg_add += 1
+        
+            crit_evo.append(old_crit)
+            i += 1
+    
+        self.set_params(crit_evo=crit_evo)
+        return rg_add, selected_rs
+    
     def select(self, ruleset):
         yapp = self.get_param('y')
-        yreal = self.get_param('yreal')
-        ystd = self.get_param('ystd')
-        ymean = self.get_param('ymean')
+        # yreal = self.get_param('yreal')
+        # ystd = self.get_param('ystd')
+        # ymean = self.get_param('ymean')
         method = self.get_param('calcmethod')
         inter_max = self.get_param('intermax')
 
@@ -2211,8 +2207,7 @@ class Learning(BaseEstimator):
         
         # Then optimization
         selected_rs = RuleSet(ruleset[:1])
-        old_crit = calc_ruleset_crit(selected_rs, yapp, yreal,
-                                     ymean, ystd, method)
+        old_crit = calc_ruleset_crit(selected_rs, yapp, method)
         crit_evo = [old_crit]
         nb_rules = len(ruleset)
     
@@ -2229,8 +2224,7 @@ class Learning(BaseEstimator):
                                                    inter_max):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
-                new_crit = calc_ruleset_crit(new_rs, yapp, yreal,
-                                             ymean, ystd, method)
+                new_crit = calc_ruleset_crit(new_rs, yapp, method)
             
                 selected_rs = copy.deepcopy(new_rs)
                 old_crit = new_crit
@@ -2268,9 +2262,8 @@ class Learning(BaseEstimator):
         
         ruleset = self.get_param('selected_rs')
         ymean = self.get_param('ymean')
-        ystd = self.get_param('ystd')
         
-        pred_vect = ruleset.predict(y_app, x_copy, ymean, ystd)
+        pred_vect = ruleset.predict(y_app, x_copy)
         pred_vect = list(map(lambda p: ymean if p != p else p, pred_vect))
         
         return np.array(pred_vect)
