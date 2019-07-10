@@ -1199,28 +1199,33 @@ class Rule(object):
         """
         self.set_params(out=False)
         active_vect = self.calc_activation(x=x)
-        
-        self.set_params(activation=active_vect)
-        
-        cov = calc_coverage(active_vect)
-        self.set_params(cov=cov)
-        
-        if cov > cov_max or cov < cov_min:
-            self.set_params(out=True)
-            
-        pred = calc_prediction(active_vect, y)
-        self.set_params(pred=pred)
 
-        cond_var = calc_variance(active_vect, y)
-        self.set_params(var=cond_var)
-        
-        pred_vect = active_vect * pred
-        cplt_val = calc_prediction(1 - active_vect, y)
-        np.place(pred_vect, pred_vect == 0, cplt_val)
-        
-        rez = calc_crit(pred_vect, y, method)
-        self.set_params(crit=rez)
-    
+        if sum(active_vect) > 0:
+            self.set_params(activation=active_vect)
+
+            cov = calc_coverage(active_vect)
+            self.set_params(cov=cov)
+
+            if cov > cov_max or cov < cov_min:
+                self.set_params(out=True)
+
+            else:
+                pred = calc_prediction(active_vect, y)
+                self.set_params(pred=pred)
+
+                cond_var = calc_variance(active_vect, y)
+                self.set_params(var=cond_var)
+
+                pred_vect = active_vect * pred
+                cplt_val = calc_prediction(1 - active_vect, y)
+                np.place(pred_vect, pred_vect == 0, cplt_val)
+
+                rez = calc_crit(pred_vect, y, method)
+                self.set_params(crit=rez)
+
+        else:
+            self.set_params(out=True)
+
     def calc_activation(self, x=None):
         """
         Compute the activation vector of an rule
