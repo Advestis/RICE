@@ -295,7 +295,7 @@ def calc_ruleset_crit(ruleset, yapp, method):
     return crit
 
 
-def add_insignificant_rule(rs, X, y):
+def add_no_rule(rs, X, y):
     """
     Return the two smallest rule of CP1 that cover all none covered
     positive and negative points
@@ -322,10 +322,8 @@ def add_insignificant_rule(rs, X, y):
     pos_rule = None
     if sum(no_rule_act) > 0:
         neg_rule_list = []
-        neg_rule_cov = []
         pos_rule_list = []
-        pos_rule_cov = []
-    
+
         for i in range(X.shape[1]):
             try:
                 sub_x = X[:, i].astype('float')
@@ -349,8 +347,6 @@ def add_insignificant_rule(rs, X, y):
                                                       xmax=[sub_x.max()],
                                                       xmin=[sub_x.min()]))
                     neg_rule_list.append(neg_no_rule)
-                    active_vect = neg_no_rule.calc_activation(x=X)
-                    neg_rule_cov.append(calc_coverage(active_vect))
     
                 if sum(no_rule_act_pos) > 0:
                     x_pos = np.extract(no_rule_act_pos, sub_x)
@@ -362,13 +358,30 @@ def add_insignificant_rule(rs, X, y):
                                                       xmin=[sub_x.min()]))
         
                     pos_rule_list.append(pos_no_rule)
-                    active_vect = pos_no_rule.calc_activation(x=X)
-                    pos_rule_cov.append(calc_coverage(active_vect))
-                
+
         if len(neg_rule_list) > 0:
-            neg_rule = neg_rule_list[neg_rule_cov.index(min(neg_rule_cov))]
+            neg_rule = neg_rule_list[0]
+            for rg in neg_rule_list[1:]:
+                conditions_list = neg_rule.intersect_conditions(rg)
+                new_conditions = RuleConditions(features_name=conditions_list[0],
+                                                features_index=conditions_list[1],
+                                                bmin=conditions_list[2],
+                                                bmax=conditions_list[3],
+                                                xmax=conditions_list[5],
+                                                xmin=conditions_list[4])
+                neg_rule = Rule(new_conditions)
+
         if len(pos_rule_list) > 0:
-            pos_rule = pos_rule_list[pos_rule_cov.index(min(pos_rule_cov))]
+            pos_rule = pos_rule_list[0]
+            for rg in pos_rule_list[1:]:
+                conditions_list = pos_rule.intersect_conditions(rg)
+                new_conditions = RuleConditions(features_name=conditions_list[0],
+                                                features_index=conditions_list[1],
+                                                bmin=conditions_list[2],
+                                                bmax=conditions_list[3],
+                                                xmax=conditions_list[5],
+                                                xmin=conditions_list[4])
+                pos_rule = Rule(new_conditions)
 
     return neg_rule, pos_rule
     
@@ -2055,21 +2068,21 @@ class Learning(BaseEstimator):
                 
         # Add rule to have a covering
         if selected_rs.calc_coverage() < 1:
-            neg_rule, pos_rule = add_insignificant_rule(selected_rs, X, y)
+            neg_rule, pos_rule = add_no_rule(selected_rs, X, y)
             features_name = self.get_param('features_name')
             
             if neg_rule is not None:
                 id_feature = neg_rule.conditions.get_param('features_index')[0]
                 neg_rule.conditions.set_params(features_name=[features_name[id_feature]])
                 neg_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
-                print('Add insignificant negative rule %s.' % str(neg_rule))
+                print('Add no rule negative %s.' % str(neg_rule))
                 selected_rs.append(neg_rule)
                 
             if pos_rule is not None:
                 id_feature = pos_rule.conditions.get_param('features_index')[0]
                 pos_rule.conditions.set_params(features_name=[features_name[id_feature]])
                 pos_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
-                print('Add insignificant positive rule %s.' % str(pos_rule))
+                print('Add no rule positive %s.' % str(pos_rule))
                 selected_rs.append(pos_rule)
         else:
             print('No insignificant rule added.')
