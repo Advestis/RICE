@@ -2033,7 +2033,7 @@ class Learning(BaseEstimator):
                 rule_features = list(itemgetter(*id_feature)(features_name))
                 neg_rule.conditions.set_params(features_name=rule_features)
                 neg_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
-                print('Add no rule negative %s.' % str(neg_rule))
+                print('Add negative no-rule  %s.' % str(neg_rule))
                 selected_rs.append(neg_rule)
                 
             if pos_rule is not None:
@@ -2041,10 +2041,10 @@ class Learning(BaseEstimator):
                 rule_features = list(itemgetter(*id_feature)(features_name))
                 pos_rule.conditions.set_params(features_name=rule_features)
                 pos_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
-                print('Add no rule positive %s.' % str(pos_rule))
+                print('Add positive no-rule  %s.' % str(pos_rule))
                 selected_rs.append(pos_rule)
         else:
-            print('No insignificant rule added.')
+            print('No no-rule added.')
             
         return selected_rs
 
