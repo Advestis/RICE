@@ -7,6 +7,7 @@ import copy
 import operator
 import functools
 from collections import Counter
+from operator import itemgetter
 
 import numpy as np
 import pandas as pd
@@ -587,11 +588,11 @@ def signi_test(rule, ymean, sigma, beta):
     ------
     The bound for the conditional expectation to be significant
     """
-    return beta * abs(rule.get_param('pred') - ymean) >= np.sqrt(rule.get_param('var') - sigma)
+    return beta * abs(rule.get_param('pred') - ymean) >= np.sqrt(max(0, rule.get_param('var') - sigma))
 
 
 def insigni_test(rule, sigma, epsilon):
-    return epsilon >= np.sqrt(rule.get_param('var') - sigma)
+    return epsilon >= np.sqrt(max(0, rule.get_param('var') - sigma))
 
 
 def calc_zscore(active_vect, y, th):
@@ -1663,18 +1664,6 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        maximized : {boolean type} default False
-                    To choose if the criterion must be maximized
-                    Otherwise it will be minimized
-
-        method : {string type} default mse_function if y has more than
-                 2 differents values
-                 Choose among the mse_function and mse_function criterion
-
-        signicrit : {string type} default bernstein if the number of row is
-                   greater than 30 else tscore
-                   Choose among zscore, hoeffding and bernstein
-
         alpha : {float type such as 0 < th < 1/4} default 1/5
                 The main parameter
 
@@ -1684,26 +1673,13 @@ class Learning(BaseEstimator):
 
         cp : {int type} default d
              Choose the maximal complexity of one rule
-
-        covmax : {float type such as 0 < covmax < 1} default 1
-                 Choose the minimal coverage of one rule
-
-        nb_candidates : {int type} default 300
-                    Choose the number of candidates to increase complexity
-
+        
         intermax : {float type such as 0 <= intermax <= 1} default 1
                    Choose the maximal intersection rate begin a rule and
                    a current selected ruleset
-
+                   
         nb_jobs : {int type} default number of core -2
                   Select the number of CPU used
-
-        fullselection : {boolean type} default True
-                        Choose if the selection is among all complexity (True)
-                        or a selection by complexity (False)
-                        
-        minimize_risk : {boolean type} default False
-                        To use the risk minimizer function to select significant rules
         """
         self.selected_rs = RuleSet([])
         self.ruleset = RuleSet([])
@@ -1714,25 +1690,13 @@ class Learning(BaseEstimator):
             setattr(self, arg, val)
         
         if hasattr(self, 'alpha') is False:
-            self.alpha = 1. / 5
+            self.alpha = 1. / 2 - 1. / 100
         
         if hasattr(self, 'nb_jobs') is False:
             self.nb_jobs = -2
         
-        if hasattr(self, 'nb_candidates') is False:
-            self.nb_candidates = 300
-        
         if hasattr(self, 'intermax') is False:
             self.intermax = 1.0
-        
-        if hasattr(self, 'fullselection') is False:
-            self.fullselection = True
-        
-        if hasattr(self, 'maximized') is False:
-            self.maximized = False
-        
-        if hasattr(self, 'minimize_risk') is False:
-            self.minimize_risk = False
     
     def __repr__(self):
         return self.__str__()
@@ -1777,7 +1741,8 @@ class Learning(BaseEstimator):
             self.set_params(covmin=covmin)
             
         if hasattr(self, 'nb_bucket') is False:
-            nb_bucket = max(5, int(np.sqrt(pow(X.shape[0], 1. / X.shape[1]))))
+            nb_bucket = max(10, int(np.sqrt(pow(X.shape[0],
+                                                1. / X.shape[1]))))
             
             nb_bucket = min(nb_bucket, X.shape[0])
             self.set_params(nb_bucket=nb_bucket)
@@ -1833,8 +1798,6 @@ class Learning(BaseEstimator):
         of the empirical risk
         """
         complexity = self.get_param('cp')
-        maximized = self.get_param('maximized')
-        
         assert complexity > 0, \
             'Complexity must be strictly superior to 0'
         
@@ -1860,20 +1823,14 @@ class Learning(BaseEstimator):
                         print('No rules for complexity %s' % str(cp))
                         break
                     
-                    ruleset.sort_by('crit', maximized)
+                    ruleset.sort_by('crit', False)
             self.set_params(ruleset=ruleset)
             
             # --------------
             # SELECTION PART
             # --------------
             print('----- Selection ------')
-            selection_type = self.get_param('fullselection')
-            if selection_type:
-                selected_rs = self.select_rules(0)
-            else:
-                selected_rs = self.get_param('selected_rs')
-                for cp in range(1, complexity + 1):
-                    selected_rs += self.select_rules(cp)
+            selected_rs = self.select_rules(0)
             
             ruleset.make_rule_names()
             self.set_params(ruleset=ruleset)
@@ -1909,7 +1866,7 @@ class Learning(BaseEstimator):
         ruleset = functools.reduce(operator.add, ruleset)
         
         ruleset = RuleSet(ruleset)
-        ruleset.sort_by('crit', self.get_param('maximized'))
+        ruleset.sort_by('crit', False)
         
         self.set_params(ruleset=ruleset)
     
@@ -2011,7 +1968,6 @@ class Learning(BaseEstimator):
         Returns a subset of a given ruleset.
         This subset minimizes the empirical contrast on the learning set
         """
-        # maximized = self.get_param('maximized')
         ymean = self.get_param('ymean')
         # ystd = self.get_param('ystd')
         ruleset = self.get_param('ruleset')
@@ -2044,7 +2000,8 @@ class Learning(BaseEstimator):
         print('Number rules after significant test: %s' % str(len(sub_ruleset)))
 
         if len(signi_ruleset) > 0:
-            signi_ruleset.sort_by('cov', True)
+            # signi_ruleset.sort_by('cov', True)
+            signi_ruleset.sort_by('crit', False)
             rg_add, selected_rs = self.fast_select(signi_ruleset)
             print('Number rules significant selected rules: %s' % str(rg_add))
 
@@ -2072,15 +2029,17 @@ class Learning(BaseEstimator):
             features_name = self.get_param('features_name')
             
             if neg_rule is not None:
-                id_feature = neg_rule.conditions.get_param('features_index')[0]
-                neg_rule.conditions.set_params(features_name=[features_name[id_feature]])
+                id_feature = neg_rule.conditions.get_param('features_index')
+                rule_features = list(itemgetter(*id_feature)(features_name))
+                neg_rule.conditions.set_params(features_name=rule_features)
                 neg_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
                 print('Add no rule negative %s.' % str(neg_rule))
                 selected_rs.append(neg_rule)
                 
             if pos_rule is not None:
-                id_feature = pos_rule.conditions.get_param('features_index')[0]
-                pos_rule.conditions.set_params(features_name=[features_name[id_feature]])
+                id_feature = pos_rule.conditions.get_param('features_index')
+                rule_features = list(itemgetter(*id_feature)(features_name))
+                pos_rule.conditions.set_params(features_name=rule_features)
                 pos_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.0)
                 print('Add no rule positive %s.' % str(pos_rule))
                 selected_rs.append(pos_rule)
