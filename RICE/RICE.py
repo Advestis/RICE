@@ -1702,8 +1702,9 @@ class Learning(BaseEstimator):
         return self.__str__()
     
     def __str__(self):
-        learning = self.get_param('cpname') + ': '
-        learning += self.get_param('target')
+        learning = 'Learning'
+        # learning = self.get_param('cpname') + ': '
+        # learning += self.get_param('target')
         return learning
     
     def fit(self, X, y, features_name=None):
