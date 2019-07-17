@@ -8,7 +8,7 @@ local machine for development and testing purposes. See deployment for notes
 on how to deploy the project on a live system.
 
 ### Prerequisites
-RICE is developed in Python version 3.5. It requires some usual packages
+RICE is developed in Python version 3.5 or greater. It requires some usual packages
 - NumPy (post 1.13.0)
 - Scikit-Learn (post 0.19.0)
 - Pandas (post 0.16.0)
