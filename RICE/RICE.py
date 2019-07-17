@@ -46,18 +46,17 @@ def make_condition(rule):
     """
     conditions = rule.get_param('conditions').get_attr()
     cp = rule.get_param('cp')
-    
     conditions_str = ''
     for i in range(cp):
         if i > 0:
             conditions_str += ' & '
-        
+            
         conditions_str += conditions[0][i]
         if conditions[2][i] == conditions[3][i]:
             conditions_str += ' = '
             conditions_str += str(conditions[2][i])
         else:
-            conditions_str += ' $\in$ ['
+            conditions_str += r' $\in$ ['
             conditions_str += str(conditions[2][i])
             conditions_str += ', '
             conditions_str += str(conditions[3][i])
@@ -124,7 +123,8 @@ def make_rules(feature_name, feature_index, X, y,
                                             values=values)
                 
                 rule = Rule(conditions)
-                rules_list.append(eval_rule(rule, X, y, method, cov_min, cov_max))
+                rules_list.append(eval_rule(rule, X, y, method,
+                                            cov_min, cov_max))
         
         else:
             bmax = bmin
@@ -184,7 +184,8 @@ def eval_rule(rule, X, y, method, cov_min, cov_max):
         return None
 
 
-def find_upcp(rule, ruleset_cp1, cp):
+def calc_intersection(rule, ruleset_cp1, cp,
+                      cov_min, cov_max):
     """
     Calculation of all statistics of an rules
 
@@ -198,7 +199,13 @@ def find_upcp(rule, ruleset_cp1, cp):
 
     cp : {int type, cp > 1}
          A given complexity
+    
+    cov_min : {float type such as 0 <= covmin <= 1}
+              The maximal coverage of one rule
 
+    cov_max : {float type such as 0 <= covmax <= 1}
+              The maximal coverage of one rule
+              
     Return
     ------
     rules_list : {list type}
@@ -208,13 +215,17 @@ def find_upcp(rule, ruleset_cp1, cp):
     """
     if cp == 2:
         i = ruleset_cp1.rules.index(rule)
-        rules_list = [rule.intersect(rules_cp1, cp)
+        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max)
                       for rules_cp1 in ruleset_cp1[i + 1:]]
+        rules_list = list(filter(None, rules_list))  # to drop bad rules
+        rules_list = list(set(rules_list))
         return rules_list
     
     else:
-        rules_list = [rule.intersect(rules_cp1, cp)
+        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max)
                       for rules_cp1 in ruleset_cp1]
+        rules_list = list(filter(None, rules_list))  # to drop bad rules
+        rules_list = list(set(rules_list))
         return rules_list
 
 
@@ -322,43 +333,8 @@ def add_no_rule(rs, X, y):
     neg_rule = None
     pos_rule = None
     if sum(no_rule_act) > 0:
-        neg_rule_list = []
-        pos_rule_list = []
-
-        for i in range(X.shape[1]):
-            try:
-                sub_x = X[:, i].astype('float')
-            except ValueError:
-                sub_x = None
-            
-            if sub_x is not None:
-                sub_no_rule_act = no_rule_act[~np.isnan(sub_x)]
-                sub_y = y[~np.isnan(sub_x)]
-                sub_x = sub_x[~np.isnan(sub_x)]
     
-                no_rule_act_pos = np.array(sub_y * sub_no_rule_act > 0)
-                no_rule_act_neg = np.array(sub_y * sub_no_rule_act < 0)
-                
-                if sum(no_rule_act_neg) > 0:
-                    x_neg = np.extract(no_rule_act_neg, sub_x)
-                    neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
-                                                      bmax=[x_neg.max()],
-                                                      features_name=[''],
-                                                      features_index=[i],
-                                                      xmax=[sub_x.max()],
-                                                      xmin=[sub_x.min()]))
-                    neg_rule_list.append(neg_no_rule)
-    
-                if sum(no_rule_act_pos) > 0:
-                    x_pos = np.extract(no_rule_act_pos, sub_x)
-                    pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
-                                                      bmax=[x_pos.max()],
-                                                      features_name=[''],
-                                                      features_index=[i],
-                                                      xmax=[sub_x.max()],
-                                                      xmin=[sub_x.min()]))
-        
-                    pos_rule_list.append(pos_no_rule)
+        neg_rule_list, pos_rule_list = get_norules_list(no_rule_act, X, y)
 
         if len(neg_rule_list) > 0:
             neg_rule = neg_rule_list[0]
@@ -386,6 +362,48 @@ def add_no_rule(rs, X, y):
 
     return neg_rule, pos_rule
     
+
+def get_norules_list(no_rule_act, X, y):
+    neg_rule_list = []
+    pos_rule_list = []
+    
+    for i in range(X.shape[1]):
+        try:
+            sub_x = X[:, i].astype('float')
+        except ValueError:
+            sub_x = None
+        
+        if sub_x is not None:
+            sub_no_rule_act = no_rule_act[~np.isnan(sub_x)]
+            sub_y = y[~np.isnan(sub_x)]
+            sub_x = sub_x[~np.isnan(sub_x)]
+            
+            no_rule_act_pos = np.array(sub_y * sub_no_rule_act > 0)
+            no_rule_act_neg = np.array(sub_y * sub_no_rule_act < 0)
+            
+            if sum(no_rule_act_neg) > 0:
+                x_neg = np.extract(no_rule_act_neg, sub_x)
+                neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
+                                                  bmax=[x_neg.max()],
+                                                  features_name=[''],
+                                                  features_index=[i],
+                                                  xmax=[sub_x.max()],
+                                                  xmin=[sub_x.min()]))
+                neg_rule_list.append(neg_no_rule)
+            
+            if sum(no_rule_act_pos) > 0:
+                x_pos = np.extract(no_rule_act_pos, sub_x)
+                pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
+                                                  bmax=[x_pos.max()],
+                                                  features_name=[''],
+                                                  features_index=[i],
+                                                  xmax=[sub_x.max()],
+                                                  xmin=[sub_x.min()]))
+                
+                pos_rule_list.append(pos_no_rule)
+    
+    return neg_rule_list, pos_rule_list
+
 
 def get_variables_count(ruleset):
     """
@@ -588,7 +606,9 @@ def signi_test(rule, ymean, sigma, beta):
     ------
     The bound for the conditional expectation to be significant
     """
-    return beta * abs(rule.get_param('pred') - ymean) >= np.sqrt(max(0, rule.get_param('var') - sigma))
+    left_term = beta * abs(rule.get_param('pred') - ymean)
+    right_term = np.sqrt(max(0, rule.get_param('var') - sigma))
+    return left_term >= right_term
 
 
 def insigni_test(rule, sigma, epsilon):
@@ -1084,8 +1104,8 @@ class Rule(object):
         
         intersection = np.logical_and(activation_self, activation_other)
         
-        if (np.allclose(intersection, activation_self) or
-                np.allclose(intersection, activation_other)):
+        if (np.allclose(intersection, activation_self)
+                or np.allclose(intersection, activation_other)):
             return None
         else:
             return 1 * intersection
@@ -1141,8 +1161,8 @@ class Rule(object):
         pts_rule = np.sum(activation)
         pts_self = np.sum(self_vect)
         
-        ans = ((pts_inter < inter_max * pts_self) and
-               (pts_inter < inter_max * pts_rule))
+        ans = ((pts_inter < inter_max * pts_self)
+               and (pts_inter < inter_max * pts_rule))
         
         return ans
     
@@ -1159,31 +1179,31 @@ class Rule(object):
         
         return conditions
     
-    def intersect(self, rule, cp):
+    def intersect(self, rule, cp, cov_min, cov_max):
         """
         Compute a suitable rule object from the intersection of an rule
         (self) and an other (rulessert).
         Suitable means that self and rule satisfied the intersection test
         """
+        new_rule = None
         if self.get_param('pred') * rule.get_param('pred') > 0:
             
             activation = self.intersect_test(rule, cp)
             if activation is not None:
-                conditions_list = self.intersect_conditions(rule)
-                
-                new_conditions = RuleConditions(features_name=conditions_list[0],
-                                                features_index=conditions_list[1],
-                                                bmin=conditions_list[2],
-                                                bmax=conditions_list[3],
-                                                xmax=conditions_list[5],
-                                                xmin=conditions_list[4])
-                new_rule = Rule(new_conditions)
-                new_rule.set_params(activation=activation)
-                return new_rule
-            else:
-                return None
-        else:
-            return None
+                cov = calc_coverage(activation)
+                if cov_min <= cov <= cov_max:
+                    conditions_list = self.intersect_conditions(rule)
+                    
+                    new_conditions = RuleConditions(features_name=conditions_list[0],
+                                                    features_index=conditions_list[1],
+                                                    bmin=conditions_list[2],
+                                                    bmax=conditions_list[3],
+                                                    xmax=conditions_list[5],
+                                                    xmin=conditions_list[4])
+                    new_rule = Rule(new_conditions)
+                    new_rule.set_params(activation=activation)
+
+        return new_rule
     
     def calc_stats(self, x, y, method='mse_function',
                    cov_min=0.01, cov_max=0.5):
@@ -1725,7 +1745,8 @@ class Learning(BaseEstimator):
         
         # Check type for data
         X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
-        y = check_array(y, dtype=None, ensure_2d=False, force_all_finite=False)  # type: np.ndarray
+        y = check_array(y, dtype=None, ensure_2d=False,
+                        force_all_finite=False)  # type: np.ndarray
 
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
@@ -1752,7 +1773,6 @@ class Learning(BaseEstimator):
             covmax = 1.0
             #     1.0 / np.log(np.sqrt(self.get_param('nb_bucket')))
             # covmax = min(0.99, covmax)
-            
             self.set_params(covmax=covmax)
 
         if hasattr(self, 'calcmethod') is False:
@@ -1815,7 +1835,7 @@ class Learning(BaseEstimator):
                 print('Design for complexity %s' % str(cp))
                 if len(selected_rs.extract_cp(cp)) == 0:
                     # seeking a set of rules with a complexity cp
-                    ruleset_cpup = self.up_complexity(cp)
+                    ruleset_cpup = self.calc_cpc(cp)
                     
                     if len(ruleset_cpup) > 0:
                         ruleset += ruleset_cpup
@@ -1871,7 +1891,7 @@ class Learning(BaseEstimator):
         
         self.set_params(ruleset=ruleset)
     
-    def up_complexity(self, cp):
+    def calc_cpc(self, cp):
         """
         Returns a ruleset of rules with complexity=cp.
         """
@@ -1900,29 +1920,32 @@ class Learning(BaseEstimator):
         else:
             return []
     
-    def select_candidates(self, rules_cp):
-        """
-        Returns a selection of candidates to increase complexity
-        for a given complexity (cp)
-        """
-        ruleset = self.get_param('ruleset')
-        ruleset_candidates = ruleset.extract_cp(rules_cp)
-        ruleset_candidates.sort_by('var', True)
-        
-        nb_candidates = self.get_param('nb_candidates')
-        if nb_candidates is not None:
-            if len(ruleset_candidates) > nb_candidates:
-                pos_ruleset = ruleset_candidates.extract_greater('pred', 0)
-                neg_ruleset = ruleset_candidates.extract_least('pred', 0)
-                
-                id_pos = float(len(pos_ruleset)) / len(ruleset_candidates) * nb_candidates
-                id_neg = float(len(neg_ruleset)) / len(ruleset_candidates) * nb_candidates
-                
-                rules_list = pos_ruleset[:int(id_pos)]
-                rules_list += neg_ruleset[:int(id_neg)]
-                
-                ruleset_candidates = RuleSet(list(rules_list))
-        return ruleset_candidates
+    # def select_candidates(self, rules_cp):
+    #     """
+    #     Returns a selection of candidates to increase complexity
+    #     for a given complexity (cp)
+    #     """
+    #     ruleset = self.get_param('ruleset')
+    #     ruleset_candidates = ruleset.extract_cp(rules_cp)
+    #     ruleset_candidates.sort_by('var', True)
+    #
+    #     nb_candidates = self.get_param('nb_candidates')
+    #     if nb_candidates is not None:
+    #         if len(ruleset_candidates) > nb_candidates:
+    #             pos_ruleset = ruleset_candidates.extract_greater('pred', 0)
+    #             neg_ruleset = ruleset_candidates.extract_least('pred', 0)
+    #
+    #             id_pos = float(len(pos_ruleset)) / len(ruleset_candidates)\
+    #             * nb_candidates
+    #             id_neg = float(len(neg_ruleset)) / len(ruleset_candidates)\
+    #             * nb_candidates
+    #
+    #             rules_list = pos_ruleset[:int(id_pos)]
+    #             rules_list += neg_ruleset[:int(id_neg)]
+    #
+    #             ruleset_candidates = RuleSet(list(rules_list))
+    #
+    #     return ruleset_candidates
     
     def find_candidates(self, cp):
         """
@@ -1931,38 +1954,55 @@ class Learning(BaseEstimator):
         """
         rules_list = []
         i_max = int(cp / 2) + 1
+        ruleset = self.get_param('ruleset')
+        nb_jobs = self.get_param('nb_jobs')
+        cov_min = self.get_param('covmin')
+        cov_max = self.get_param('covmax')
+        
         for i in range(1, i_max):
-            rs_cp1 = self.select_candidates(i)
+            rs_cpi = ruleset.extract_cp(cp=i)
+            rs_cpc = ruleset.extract_cp(cp=cp - 1)
+            # rs_candidate = self.select_candidates(cp - i)
         
-            rs_candidate = self.select_candidates(cp - i)
-        
-            if len(rs_candidate) > 0:
-                inter_list = self.find_complexe_rules(cp, rs_cp1,
-                                                      rs_candidate)
+            if len(rs_cpc) > 0:
+                inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
+                    delayed(calc_intersection)(rule, rs_cpi, cp,
+                                               cov_min, cov_max)
+                    for rule in rs_cpc)
+    
+                inter_list = functools.reduce(operator.add, inter_list)
+    
+                inter_list = list(filter(None, inter_list))  # to drop bad rules
+                inter_list = list(set(inter_list))  # to drop duplicates
+
                 rules_list += inter_list
                 
         return rules_list
 
-    def find_complexe_rules(self, cp, ruleset_cp1, ruleset_candidate):
-        """
-        Returns a list of Rule object designing by intersection of rule from
-        ruleset_cp1 and rule from ruleset_candidate
-        """
-        nb_jobs = self.get_param('nb_jobs')
-        
-        if nb_jobs == 1:
-            rules_list = [find_upcp(rule, ruleset_cp1, cp)
-                          for rule in ruleset_candidate]
-        else:
-            rules_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                delayed(find_upcp)(rule, ruleset_cp1, cp)
-                for rule in ruleset_candidate)
-        
-        rules_list = functools.reduce(operator.add, rules_list)
-        
-        rules_list = list(filter(None, rules_list))  # to drop bad rules
-        rules_list = list(set(rules_list))  # to drop duplicates
-        return rules_list
+    # def find_suitable_intersections(self, cp, ruleset_cpi, ruleset_cpc):
+    #     """
+    #     Returns a list of Rule object designing by intersection of rule from
+    #     ruleset_cpi and rule from ruleset_cpc
+    #     """
+    #     nb_jobs = self.get_param('nb_jobs')
+    #     cov_min = self.get_param('covmin')
+    #     cov_max = self.get_param('covmax')
+    #
+    #     if nb_jobs == 1:
+    #         rules_list = [calc_intersection(rule, ruleset_cpi, cp,
+    #                                         cov_min, cov_max)
+    #                       for rule in ruleset_cpc]
+    #     else:
+    #         rules_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
+    #             delayed(calc_intersection)(rule, ruleset_cpi, cp,
+    #                                        cov_min, cov_max)
+    #             for rule in ruleset_cpc)
+    #
+    #     rules_list = functools.reduce(operator.add, rules_list)
+    #
+    #     rules_list = list(filter(None, rules_list))  # to drop bad rules
+    #     rules_list = list(set(rules_list))  # to drop duplicates
+    #     return rules_list
     
     def select_rules(self, cp):
         """
@@ -2015,7 +2055,8 @@ class Learning(BaseEstimator):
             insigni_ruleset = RuleSet(list(filter(lambda rule: insigni_test(rule, sigma,
                                                                             epsilon),
                                                   sub_ruleset)))
-            print('Number rules after insignificant test: %s' % str(len(insigni_ruleset)))
+            print('Number rules after insignificant test: %s'
+                  % str(len(insigni_ruleset)))
 
             insigni_ruleset.sort_by('cov', True)
             rg_add, selected_rs = self.fast_select(insigni_ruleset, selected_rs)
@@ -2104,7 +2145,8 @@ class Learning(BaseEstimator):
     #             else:
     #                 utest = [new_rules.union_test(e.get_activation(), inter_max)
     #                          for e in ruleset_copy]
-    #                 if all(utest) and new_rules.union_test(ruleset_copy.calc_activation(),
+    #                 rs_act = ruleset_copy.calc_activation()
+    #                 if all(utest) and new_rules.union_test(rs_act,
     #                                                        inter_max):
     #                     ruleset_copy.append(new_rules)
     #                     ruleset_list.append(ruleset_copy)
@@ -2708,61 +2750,12 @@ class Learning(BaseEstimator):
                           'Prediction', 'Variance',
                           'Criterion']].copy()
         
-        # no_rules_df = self.get_complementary_rule()
-        # if no_rules_df is not None:
-        #     selected_df = selected_df.append(no_rules_df)
-        
         selected_df['Coverage'] = selected_df.Coverage.round(2)
         selected_df['Prediction'] = selected_df.Prediction.round(2)
         selected_df['Variance'] = selected_df.Variance.round(2)
         selected_df['Criterion'] = selected_df.Criterion.round(2)
         
         return selected_df
-    
-    def get_complementary_rule(self):
-        """
-        Returns
-        -------
-        norule_df : {DataFrame type or None}
-                    DataFrame with the no activated rule.
-        """
-        y = self.get_param('y')
-        ymean = self.get_param('ymean')
-        ystd = self.get_param('ystd')
-        yreal = self.get_param('yreal')
-        method = self.get_param('calcmethod')
-        rs = self.get_param('selected_rs')
-        
-        sum_vect = np.sum([rule.get_activation() for rule in rs], axis=0)
-        sum_vect = [bool(x) for x in sum_vect]
-        active_vect = np.logical_not(sum_vect).astype(int)
-        
-        cov = calc_coverage(active_vect)
-        
-        if cov > 0.0:
-            pred = calc_prediction(active_vect, y)
-            var = calc_variance(active_vect, y)
-            
-            pred_vect = active_vect * pred
-            cplt_val = calc_prediction(1 - active_vect, y)
-            np.place(pred_vect, pred_vect == 0, cplt_val)
-            crit = calc_crit(pred_vect, yreal, ymean, ystd, method)
-            
-            norule_df = pd.DataFrame(index=['R ' + str(len(rs))],
-                                     columns=['Conditions', 'Coverage',
-                                              'Prediction', 'Variance',
-                                              'Criterion'])
-            
-            norule_df['Conditions'] = 'No rule activated'
-            norule_df['Coverage'] = cov
-            norule_df['Prediction'] = pred
-            norule_df['Variance'] = var
-            norule_df['Criterion'] = crit
-            
-            return norule_df
-        
-        else:
-            return None
     
     """------   Getters   -----"""
     
