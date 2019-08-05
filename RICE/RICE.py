@@ -66,7 +66,7 @@ def make_condition(rule):
 
 
 def make_rules(feature_name, feature_index, X, y,
-               method, cov_min, cov_max):
+               method, cov_min, cov_max, low_memory):
     """
     Evaluate all suitable rules (i.e satisfying all criteria)
     on a given feature.
@@ -93,7 +93,10 @@ def make_rules(feature_name, feature_index, X, y,
 
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
-
+    
+    low_memory : {bool type}
+                 To save activation vectors of rules
+                 
     Return
     ------
     rules_list : {list type}
@@ -124,7 +127,7 @@ def make_rules(feature_name, feature_index, X, y,
                 
                 rule = Rule(conditions)
                 rules_list.append(eval_rule(rule, X, y, method,
-                                            cov_min, cov_max))
+                                            cov_min, cov_max, low_memory))
         
         else:
             bmax = bmin
@@ -137,13 +140,13 @@ def make_rules(feature_name, feature_index, X, y,
                                         values=values)
             
             rule = Rule(conditions)
-            rules_list.append(eval_rule(rule, X, y, method, cov_min, cov_max))
+            rules_list.append(eval_rule(rule, X, y, method, cov_min, cov_max, low_memory))
     
     rules_list = list(filter(None, rules_list))
     return rules_list
 
 
-def eval_rule(rule, X, y, method, cov_min, cov_max):
+def eval_rule(rule, X, y, method, cov_min, cov_max, low_memory):
     """
     Calculation of all statistics of an rules
 
@@ -166,7 +169,14 @@ def eval_rule(rule, X, y, method, cov_min, cov_max):
 
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
-
+    
+    X : {array-like or discretized matrix, shape = [n, d] or None}
+        The training input samples after discretization.
+        If low_memory is True X must not be None
+        
+    low_memory : {bool type}
+                 To save activation vectors of rules
+              
     Return
     ------
     None : if the rule does not verified criteria
@@ -176,7 +186,7 @@ def eval_rule(rule, X, y, method, cov_min, cov_max):
 
     """
     rule.calc_stats(x=X, y=y, method=method, cov_min=cov_min,
-                    cov_max=cov_max)
+                    cov_max=cov_max, low_memory=low_memory)
     
     if rule.get_param('out') is False:
         return rule
@@ -185,7 +195,8 @@ def eval_rule(rule, X, y, method, cov_min, cov_max):
 
 
 def calc_intersection(rule, ruleset_cp1, cp,
-                      cov_min, cov_max):
+                      cov_min, cov_max, X=None,
+                      low_memory=False):
     """
     Calculation of all statistics of an rules
 
@@ -205,7 +216,10 @@ def calc_intersection(rule, ruleset_cp1, cp,
 
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
-              
+    
+    low_memory : {bool type}
+                 To save activation vectors of rules
+                 
     Return
     ------
     rules_list : {list type}
@@ -215,21 +229,21 @@ def calc_intersection(rule, ruleset_cp1, cp,
     """
     if cp == 2:
         i = ruleset_cp1.rules.index(rule)
-        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max)
+        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max, X, low_memory)
                       for rules_cp1 in ruleset_cp1[i + 1:]]
         rules_list = list(filter(None, rules_list))  # to drop bad rules
         rules_list = list(set(rules_list))
         return rules_list
     
     else:
-        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max)
+        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max, X, low_memory)
                       for rules_cp1 in ruleset_cp1]
         rules_list = list(filter(None, rules_list))  # to drop bad rules
         rules_list = list(set(rules_list))
         return rules_list
 
 
-def union_test(ruleset, rule, j, inter_max):
+def union_test(ruleset, rule, j, inter_max, X=None):
     """
     Test to add a new rule (rule) to a set of rule
     (ruleset)
@@ -248,7 +262,10 @@ def union_test(ruleset, rule, j, inter_max):
 
     inter_max : {float type, 0 <= inter_max <= 1}
                 Maximal rate of intersection
-
+    
+    X : {array-like or discretized matrix, shape = [n, d] or None}
+        The training input samples after discretization.
+        
     Return
     ------
     ruleset_copy : {ruleset type}
@@ -265,17 +282,17 @@ def union_test(ruleset, rule, j, inter_max):
         if len(ruleset_copy) > 1:
             for i in range(len(ruleset_copy)):
                 rules = ruleset_copy[i]
-                utest = rule.union_test(rules.get_activation(), inter_max)
+                utest = rule.union_test(rules.get_activation(X), inter_max)
                 if utest is False:
                     return None
         
-        if rule.union_test(ruleset_copy.calc_activation(), inter_max):
+        if rule.union_test(ruleset_copy.calc_activation(X), inter_max):
             ruleset_copy.insert(j, rule)
             return ruleset_copy
         else:
             return None
     else:
-        if rule.union_test(ruleset_copy.calc_activation(), inter_max):
+        if rule.union_test(ruleset_copy.calc_activation(X), inter_max):
             ruleset_copy.append(rule)
             return ruleset_copy
         else:
@@ -1094,13 +1111,13 @@ class Rule(object):
     def __hash__(self):
         return hash(self.conditions)
     
-    def test_included(self, rule):
+    def test_included(self, rule, x=None):
         """
         Test to know if a rule (self) and an other (rule)
         are included
         """
-        activation_self = self.get_activation()
-        activation_other = rule.get_activation()
+        activation_self = self.get_activation(x)
+        activation_other = rule.get_activation(x)
         
         intersection = np.logical_and(activation_self, activation_other)
         
@@ -1132,7 +1149,7 @@ class Rule(object):
         """
         return self.get_param('cp') + rule.get_param('cp') == cp
     
-    def intersect_test(self, rule, cp):
+    def intersect_test(self, rule, cp, X):
         """
         Test to know if a rule (self) and an other (rule)
         could be intersected.
@@ -1143,18 +1160,18 @@ class Rule(object):
         """
         if self.test_cp(rule, cp):
             if self.test_variables(rule) is False:
-                return self.test_included(rule=rule)
+                return self.test_included(rule=rule, x=X)
             else:
                 return None
         else:
             return None
     
-    def union_test(self, activation, inter_max=0.80):
+    def union_test(self, activation, inter_max=0.80, X=None):
         """
         Test to know if a rule (self) and an activation vector have
         at more inter_max percent of points in common
         """
-        self_vect = self.get_activation()
+        self_vect = self.get_activation(X)
         intersect_vect = np.logical_and(self_vect, activation)
         
         pts_inter = np.sum(intersect_vect)
@@ -1179,7 +1196,7 @@ class Rule(object):
         
         return conditions
     
-    def intersect(self, rule, cp, cov_min, cov_max):
+    def intersect(self, rule, cp, cov_min, cov_max, X, low_memory):
         """
         Compute a suitable rule object from the intersection of an rule
         (self) and an other (rulessert).
@@ -1188,7 +1205,7 @@ class Rule(object):
         new_rule = None
         if self.get_param('pred') * rule.get_param('pred') > 0:
             
-            activation = self.intersect_test(rule, cp)
+            activation = self.intersect_test(rule, cp, X)
             if activation is not None:
                 cov = calc_coverage(activation)
                 if cov_min <= cov <= cov_max:
@@ -1201,12 +1218,13 @@ class Rule(object):
                                                     xmax=conditions_list[5],
                                                     xmin=conditions_list[4])
                     new_rule = Rule(new_conditions)
-                    new_rule.set_params(activation=activation)
+                    if low_memory is False:
+                        new_rule.set_params(activation=activation)
 
         return new_rule
     
     def calc_stats(self, x, y, method='mse_function',
-                   cov_min=0.01, cov_max=0.5):
+                   cov_min=0.01, cov_max=0.5, low_memory=False):
         """
         Calculation of all statistics of an rules
 
@@ -1226,7 +1244,10 @@ class Rule(object):
 
         cov_max : {float type such as 0 <= covmax <= 1}, default 0.5
                   The maximal coverage of one rule
-
+        
+        low_memory : {bool type}
+                     To save activation vectors of rules
+                 
         Return
         ------
         None : if the rule does not verified coverage conditions
@@ -1235,7 +1256,8 @@ class Rule(object):
         active_vect = self.calc_activation(x=x)
 
         if sum(active_vect) > 0:
-            self.set_params(activation=active_vect)
+            if low_memory is False:
+                self.set_params(activation=active_vect)
 
             cov = calc_coverage(active_vect)
             self.set_params(cov=cov)
@@ -1364,7 +1386,7 @@ class Rule(object):
             'self.%s must be calculate before' % param
         return getattr(self, param)
     
-    def get_activation(self):
+    def get_activation(self, x=None):
         """
         To get the activation vector of self.
         If it does not exist the function return None
@@ -1372,7 +1394,10 @@ class Rule(object):
         if hasattr(self, 'activation'):
             return self.get_param('activation')
         else:
-            return None
+            if x is not None:
+                return self.conditions.transform(x)
+            else:
+                return None
     
     def get_pred_vect(self):
         """
@@ -1605,11 +1630,11 @@ class RuleSet(object):
         
         return pred_vect
     
-    def calc_activation(self):
+    def calc_activation(self, x=None):
         """
         Compute the  activation vector of a set of rules
         """
-        active_vect = [rule.get_activation() for rule in self]
+        active_vect = [rule.get_activation(x) for rule in self]
         active_vect = sum(active_vect)
         active_vect = 1 * active_vect.astype('bool')
         
@@ -1705,6 +1730,7 @@ class Learning(BaseEstimator):
         self.ruleset = RuleSet([])
         self.bins = dict()
         self.crit_evo = []
+        self.low_memory = False
         
         for arg, val in parameters.items():
             setattr(self, arg, val)
@@ -1872,16 +1898,17 @@ class Learning(BaseEstimator):
         y = self.get_param('y')
         cov_max = self.get_param('covmax')
         cov_min = self.get_param('covmin')
+        low_memory = self.get_param('low_memory')
         
         jobs = min(len(features_name), self.get_param('nb_jobs'))
         
         if jobs == 1:
             ruleset = list(map(lambda var, idx: make_rules(var, idx, X, y, method,
-                                                           cov_min, cov_max),
+                                                           cov_min, cov_max, low_memory),
                                features_name, features_index))
         else:
             ruleset = Parallel(n_jobs=jobs, backend="multiprocessing")(
-                delayed(make_rules)(var, idx, X, y, method, cov_min, cov_max)
+                delayed(make_rules)(var, idx, X, y, method, cov_min, cov_max, low_memory)
                 for var, idx in zip(features_name, features_index))
         
         ruleset = functools.reduce(operator.add, ruleset)
@@ -1901,16 +1928,17 @@ class Learning(BaseEstimator):
         y = self.get_param('y')
         cov_max = self.get_param('covmax')
         cov_min = self.get_param('covmin')
+        low_memory = self.get_param('low_memory')
         
         rules_list = self.find_candidates(cp)
         
         if len(rules_list) > 0:
             if nb_jobs == 1:
-                rs = [eval_rule(rule, X, y, method, cov_min, cov_max)
+                rs = [eval_rule(rule, X, y, method, cov_min, cov_max, low_memory)
                       for rule in rules_list]
             else:
                 rs = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                    delayed(eval_rule)(rule, X, y, method, cov_min, cov_max)
+                    delayed(eval_rule)(rule, X, y, method, cov_min, cov_max, low_memory)
                     for rule in rules_list)
             
             rs = list(filter(None, rs))
@@ -1958,7 +1986,12 @@ class Learning(BaseEstimator):
         nb_jobs = self.get_param('nb_jobs')
         cov_min = self.get_param('covmin')
         cov_max = self.get_param('covmax')
-        
+        low_memory = self.get_param('low_memory')
+        if low_memory:
+            X = self.get_param('X')
+        else:
+            X = None
+            
         for i in range(1, i_max):
             rs_cpi = ruleset.extract_cp(cp=i)
             rs_cpc = ruleset.extract_cp(cp=cp - 1)
@@ -1967,7 +2000,8 @@ class Learning(BaseEstimator):
             if len(rs_cpc) > 0:
                 inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
                     delayed(calc_intersection)(rule, rs_cpi, cp,
-                                               cov_min, cov_max)
+                                               cov_min, cov_max,
+                                               X, low_memory)
                     for rule in rs_cpc)
     
                 inter_list = functools.reduce(operator.add, inter_list)
@@ -2178,7 +2212,11 @@ class Learning(BaseEstimator):
         method = self.get_param('calcmethod')
         inter_max = self.get_param('intermax')
         crit_evo = self.get_param('crit_evo')
-    
+        low_memory = self.get_param('low_memory')
+        if low_memory:
+            X = self.get_param('X')
+        else:
+            X = None
         if selected_rs is None:
             selected_rs = RuleSet(ruleset[:1])
             i = 1
@@ -2195,12 +2233,12 @@ class Learning(BaseEstimator):
             ruleset_copy = copy.deepcopy(selected_rs)
             new_rules = ruleset[i]
         
-            utest = [new_rules.union_test(rule.get_activation(),
-                                          inter_max)
+            utest = [new_rules.union_test(rule.get_activation(X),
+                                          inter_max, X)
                      for rule in ruleset_copy]
         
-            if all(utest) and new_rules.union_test(selected_rs.calc_activation(),
-                                                   inter_max):
+            if all(utest) and new_rules.union_test(selected_rs.calc_activation(X),
+                                                   inter_max, X):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
                 new_crit = calc_ruleset_crit(new_rs, yapp, method)
@@ -2222,7 +2260,12 @@ class Learning(BaseEstimator):
         # ymean = self.get_param('ymean')
         method = self.get_param('calcmethod')
         inter_max = self.get_param('intermax')
-
+        low_memory = self.get_param('low_memory')
+        if low_memory:
+            X = self.get_param('X')
+        else:
+            X = None
+            
         ruleset.sort_by('cov', True)
         
         # Then optimization
@@ -2236,12 +2279,12 @@ class Learning(BaseEstimator):
             ruleset_copy = copy.deepcopy(selected_rs)
             new_rules = ruleset[i]
         
-            utest = [new_rules.union_test(rule.get_activation(),
-                                          inter_max)
+            utest = [new_rules.union_test(rule.get_activation(X),
+                                          inter_max, X)
                      for rule in ruleset_copy]
         
-            if all(utest) and new_rules.union_test(selected_rs.calc_activation(),
-                                                   inter_max):
+            if all(utest) and new_rules.union_test(selected_rs.calc_activation(X),
+                                                   inter_max, X):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
                 new_crit = calc_ruleset_crit(new_rs, yapp, method)
