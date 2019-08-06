@@ -1502,6 +1502,55 @@ class RuleSet(object):
         list(map(lambda rule, rules_id: rule.make_name(rules_id),
                  self, range(len(self))))
     
+    def plot_counter_variables(self):
+        counter = get_variables_count(self)
+    
+        x_labels = list(map(lambda item: item[0], counter))
+        values = list(map(lambda item: item[1], counter))
+    
+        f = plt.figure()
+        ax = plt.subplot()
+    
+        g = sns.barplot(y=x_labels, x=values, ax=ax, ci=None)
+        g.set(xlim=(0, max(values) + 1), ylabel='Variable', xlabel='Count')
+    
+        return f
+    
+    def plot_dist(self, metric):
+        rules_names = self.get_rules_name()
+    
+        activation_list = [rule.get_pred_vect() for rule in self]
+        pred_mat = np.array(activation_list)
+    
+        dist_vect = scipy_dist.pdist(pred_mat, metric=metric)
+        dist_mat = scipy_dist.squareform(dist_vect)
+    
+        # Set up the matplotlib figure
+        f = plt.figure()
+        ax = plt.subplot()
+    
+        # Generate a mask for the upper triangle
+        mask = np.zeros_like(dist_mat, dtype=np.bool)
+        mask[np.triu_indices_from(mask)] = True
+    
+        # Generate a custom diverging colormap
+        cmap = sns.diverging_palette(220, 10, as_cmap=True)
+    
+        vmax = np.max(dist_mat)
+        vmin = np.min(dist_mat)
+        # center = np.mean(dist_mat)
+    
+        # Draw the heatmap with the mask and correct aspect ratio
+        sns.heatmap(dist_mat, cmap=cmap, ax=ax,
+                    vmax=vmax, vmin=vmin, center=1.,
+                    square=True, xticklabels=rules_names,
+                    yticklabels=rules_names, mask=mask)
+    
+        plt.yticks(rotation=0)
+        plt.xticks(rotation=90)
+    
+        return f
+    
     """------   Getters   -----"""
     
     def get_rules_param(self, param):
@@ -2474,17 +2523,8 @@ class Learning(BaseEstimator):
         """
         Function plots a graphical counter of variables used in rules.
         """
-        ruleset = self.get_param('selected_rs')
-        counter = get_variables_count(ruleset)
-        
-        x_labels = list(map(lambda item: item[0], counter))
-        values = list(map(lambda item: item[1], counter))
-        
-        f = plt.figure()
-        ax = plt.subplot()
-        
-        g = sns.barplot(y=x_labels, x=values, ax=ax, ci=None)
-        g.set(xlim=(0, max(values) + 1), ylabel='Variable', xlabel='Count')
+        rs = self.get_param('selected_rs')
+        f = rs.plot_counter_variables()
         
         return f
     
@@ -2511,41 +2551,11 @@ class Learning(BaseEstimator):
         """
         Function plots a graphical correlation of rules.
         """
-        ruleset = self.get_param('selected_rs')
-        rules_names = ruleset.get_rules_name()
-        
-        activation_list = [rule.get_pred_vect() for rule in ruleset]
-        pred_mat = np.array(activation_list)
-        
-        dist_vect = scipy_dist.pdist(pred_mat, metric=metric)
-        dist_mat = scipy_dist.squareform(dist_vect)
-        
-        # Set up the matplotlib figure
-        f = plt.figure()
-        ax = plt.subplot()
-        
-        # Generate a mask for the upper triangle
-        mask = np.zeros_like(dist_mat, dtype=np.bool)
-        mask[np.triu_indices_from(mask)] = True
-        
-        # Generate a custom diverging colormap
-        cmap = sns.diverging_palette(220, 10, as_cmap=True)
-        
-        vmax = np.max(dist_mat)
-        vmin = np.min(dist_mat)
-        # center = np.mean(dist_mat)
-        
-        # Draw the heatmap with the mask and correct aspect ratio
-        sns.heatmap(dist_mat, cmap=cmap, ax=ax,
-                    vmax=vmax, vmin=vmin, center=1.,
-                    square=True, xticklabels=rules_names,
-                    yticklabels=rules_names, mask=mask)
-        
-        plt.yticks(rotation=0)
-        plt.xticks(rotation=90)
+        rs = self.get_param('selected_rs')
+        f = rs.plot_dict(metric)
         
         return f
-    
+        
     def plot_intensity(self):
         """
         Function plots a graphical counter of variables used in rules.
