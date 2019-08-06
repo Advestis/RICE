@@ -12,7 +12,6 @@ from operator import itemgetter
 import numpy as np
 import pandas as pd
 import scipy.spatial.distance as scipy_dist
-from scipy.stats import t, norm
 
 from matplotlib import patches
 import matplotlib.pyplot as plt
@@ -217,6 +216,10 @@ def calc_intersection(rule, ruleset_cp1, cp,
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
     
+    X : {array-like or discretized matrix, shape = [n, d] or None}
+        The training input samples after discretization.
+        If low_memory is True X must not be None
+        
     low_memory : {bool type}
                  To save activation vectors of rules
                  
@@ -524,49 +527,6 @@ def mae_function(pred_vect, y):
     return crit
 
 
-def mape_function(pred_vect, y):
-    """
-    Compute the mean absolute percentage error
-    "$ \\dfrac{100}{n} \\Sigma_{i=1}^{n} | \\dfrac{\\hat{y}_i - y_i}{y_i} |$"
-
-    Parameters
-    ----------
-    pred_vect : {array type}
-                A predictor vector. It means a sparse array with two
-                different values ymean, if the rule is not active
-                and the prediction is the rule is active.
-
-    y : {array type}
-        The real target values (real numbers)
-
-    Return
-    ------
-    crit : {float type}
-           the mean squared error
-    """
-    assert len(pred_vect) == len(y), \
-        'The two array must have the same length'
-    error_vect = pred_vect - y
-    error_vect /= y
-    
-    crit = np.nanmean(np.abs(error_vect)) * 100
-    return crit
-
-
-def calc_maximal_bend(vect):
-    f_prime = np.diff(vect)
-    f_second = np.diff(f_prime)
-    nb_pts = len(f_second)
-    
-    with np.errstate(divide='ignore'):
-        bend = [pow(1 + f_prime[x + 1] ** 2, 3. / 2) / f_second[x]
-                for x in range(nb_pts)]
-    
-    is_finite = np.isfinite(bend)
-    bend = list(map(lambda c, b: abs(c) if b else 0, bend, is_finite))
-    return np.argmax(bend)
-
-
 def calc_crit(pred_vect, y, method='mse_function'):
     """
     Compute the criteria
@@ -630,128 +590,6 @@ def signi_test(rule, ymean, sigma, beta):
 
 def insigni_test(rule, sigma, epsilon):
     return epsilon >= np.sqrt(max(0, rule.get_param('var') - sigma))
-
-
-def calc_zscore(active_vect, y, th):
-    """
-    Compute the zscore test
-
-    Parameters
-    ----------
-    active_vect : {array type}
-                  A activation vector. It means a sparse array with two
-                  different values 0, if the rule is not active
-                  and the 1 is the rule is active.
-
-    y : {array type}
-        The target values (real numbers)
-
-    th : {float type}
-         The threshold for the 1-type error
-
-    Return
-    ------
-    The bound for the conditional expectation to be significant
-    """
-    nb_activation = np.sum(np.extract(active_vect, np.isfinite(y)))
-    num = np.sqrt(nb_activation)
-    deno = np.nanstd(y)
-    ratio = deno / num
-    eps = 1 - th / 2.0
-    thresold = norm.ppf(eps)
-    return thresold * ratio
-
-
-def calc_tscore(active_vect, y, th):
-    """
-    Compute the tscore test
-
-    Parameters
-    ----------
-    active_vect : {array type}
-                  A activation vector. It means a sparse array with two
-                  different values 0, if the rule is not active
-                  and the 1 is the rule is active.
-
-    y : {array type}
-        The target values (real numbers)
-
-    th : {float type}
-         The threshold for the 1-type error
-
-    Return
-    ------
-    The bound for the conditional expectation to be significant
-    """
-    nb_activation = np.sum(np.extract(active_vect, np.isfinite(y)))
-    num = np.sqrt(nb_activation)
-    deno = np.nanstd(y)
-    ratio = deno / num
-    eps = 1 - th / 2.0
-    thresold = t.ppf(eps, len(y))
-    return thresold * ratio
-
-
-def calc_hoeffding(active_vect, y, th):
-    """
-    Compute the Hoeffding test
-
-    Parameters
-    ----------
-    active_vect : {array type}
-                  A activation vector. It means a sparse array with two
-                  different values 0, if the rule is not active
-                  and the 1 is the rule is active.
-
-    y : {array type}
-        The target values (real numbers)
-
-    th : {float type}
-         The threshold for the 1-type error
-
-    Return
-    ------
-    The bound for the conditional expectation to be significant
-    """
-    sub_y = np.extract(active_vect, y)
-    y_max = np.nanmax(sub_y)
-    y_min = np.nanmin(sub_y)
-    n = np.sum(active_vect)
-    
-    num = (y_max - y_min) * np.sqrt(np.log(2. / th))
-    deno = np.sqrt(2 * n)
-    return num / deno
-
-
-def calc_bernstein(active_vect, y, th):
-    """
-    Compute the Bernstein test
-
-    Parameters
-    ----------
-    active_vect : {array type}
-                  A activation vector. It means a sparse array with two
-                  different values 0, if the rule is not active
-                  and the 1 is the rule is active.
-
-    y : {array type}
-        The target values (real numbers)
-
-    th : {float type}
-         The threshold for the 1-type error
-
-    Return
-    ------
-    The bound for the conditional expectation to be significant
-    """
-    sub_y = np.extract(active_vect, y)
-    y_max = np.nanmax(sub_y)
-    v = np.nansum(sub_y ** 2)
-    n = np.sum(active_vect)
-    
-    val1 = y_max * np.log(2. / th)
-    val2 = 72.0 * v * np.log(2. / th)
-    return 1. / (6. * n) * (val1 + np.sqrt(val1 ** 2 + val2))
 
 
 def calc_coverage(vect):
@@ -1121,8 +959,8 @@ class Rule(object):
         
         intersection = np.logical_and(activation_self, activation_other)
         
-        if (np.allclose(intersection, activation_self)
-                or np.allclose(intersection, activation_other)):
+        if np.allclose(intersection, activation_self)\
+                or np.allclose(intersection, activation_other):
             return None
         else:
             return 1 * intersection
@@ -1178,8 +1016,7 @@ class Rule(object):
         pts_rule = np.sum(activation)
         pts_self = np.sum(self_vect)
         
-        ans = ((pts_inter < inter_max * pts_self)
-               and (pts_inter < inter_max * pts_rule))
+        ans = (pts_inter < inter_max * pts_self) and (pts_inter < inter_max * pts_rule)
         
         return ans
     
