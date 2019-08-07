@@ -586,12 +586,12 @@ def significant_test(rule, ymean, sigma, beta):
     ------
     The bound for the conditional expectation to be significant
     """
-    left_term = beta * abs(rule.get_param('predictions') - ymean)
+    left_term = beta * abs(rule.get_param('pred') - ymean)
     right_term = np.sqrt(max(0, rule.get_param('var') - sigma))
     return left_term >= right_term
 
 
-def insigni_test(rule, sigma, epsilon):
+def insignificant_test(rule, sigma, epsilon):
     return epsilon >= np.sqrt(max(0, rule.get_param('var') - sigma))
 
 
@@ -935,16 +935,16 @@ class Rule(object):
         return self.conditions == other.conditions
     
     def __gt__(self, val):
-        return self.get_param('predictions') > val
+        return self.get_param('pred') > val
     
     def __lt__(self, val):
-        return self.get_param('predictions') < val
+        return self.get_param('pred') < val
     
     def __ge__(self, val):
-        return self.get_param('predictions') >= val
+        return self.get_param('pred') >= val
     
     def __le__(self, val):
-        return self.get_param('predictions') <= val
+        return self.get_param('pred') <= val
     
     def __str__(self):
         return 'rule: ' + self.conditions.__str__()
@@ -1043,23 +1043,22 @@ class Rule(object):
         Suitable means that self and rule satisfied the intersection test
         """
         new_rule = None
-        if self.get_param('predictions') * rule.get_param('predictions') > 0:
-            
-            activation = self.intersect_test(rule, cp, X)
-            if activation is not None:
-                cov = calc_coverage(activation)
-                if cov_min <= cov <= cov_max:
-                    conditions_list = self.intersect_conditions(rule)
-                    
-                    new_conditions = RuleConditions(features_name=conditions_list[0],
-                                                    features_index=conditions_list[1],
-                                                    bmin=conditions_list[2],
-                                                    bmax=conditions_list[3],
-                                                    xmax=conditions_list[5],
-                                                    xmin=conditions_list[4])
-                    new_rule = Rule(new_conditions)
-                    if low_memory is False:
-                        new_rule.set_params(activation=activation)
+        # if self.get_param('pred') * rule.get_param('pred') > 0:
+        activation = self.intersect_test(rule, cp, X)
+        if activation is not None:
+            cov = calc_coverage(activation)
+            if cov_min <= cov <= cov_max:
+                conditions_list = self.intersect_conditions(rule)
+                
+                new_conditions = RuleConditions(features_name=conditions_list[0],
+                                                features_index=conditions_list[1],
+                                                bmin=conditions_list[2],
+                                                bmax=conditions_list[3],
+                                                xmax=conditions_list[5],
+                                                xmin=conditions_list[4])
+                new_rule = Rule(new_conditions)
+                if low_memory is False:
+                    new_rule.set_params(activation=activation)
 
         return new_rule
     
@@ -1106,19 +1105,19 @@ class Rule(object):
                 self.set_params(out=True)
 
             else:
-                predictions = calc_prediction(activation_vector, y)
-                self.set_params(predictions=predictions)
+                prediction = calc_prediction(activation_vector, y)
+                self.set_params(pred=prediction)
 
                 cond_var = calc_variance(activation_vector, y)
                 self.set_params(var=cond_var)
 
-                prediction_vector = activation_vector * predictions
+                prediction_vector = activation_vector * prediction
                 complementary_prediction = calc_prediction(1 - activation_vector, y)
                 np.place(prediction_vector, prediction_vector == 0,
                          complementary_prediction)
 
                 rez = calc_criterion(prediction_vector, y, method)
-                self.set_params(criterion=rez)
+                self.set_params(crit=rez)
 
         else:
             self.set_params(out=True)
@@ -1133,13 +1132,13 @@ class Rule(object):
         """
         Compute the prediction of an rule
         """
-        predictions = self.get_param('predictions')
+        prediction = self.get_param('pred')
         if x is not None:
             activation = self.calc_activation(x=x)
         else:
             activation = self.get_activation()
         
-        return predictions * activation
+        return prediction * activation
     
     def score(self, x, y, sample_weight=None, score_type='Rate'):
         """
@@ -1201,10 +1200,10 @@ class Rule(object):
         name = 'R ' + str(num)
         cp = self.get_param('cp')
         name += '(' + str(cp) + ')'
-        predictions = self.get_param('predictions')
-        if predictions > 0:
+        prediction = self.get_param('pred')
+        if prediction > 0:
             name += '+'
-        elif predictions < 0:
+        elif prediction < 0:
             name += '-'
         
         if learning is not None:
@@ -1241,17 +1240,17 @@ class Rule(object):
             else:
                 return None
     
-    def get_prediction_vector(self):
+    def get_predictions_vector(self, x=None):
         """
         To get the activation vector of self.
         If it does not exist the function return None
         """
-        if hasattr(self, 'predictions'):
-            predictions = self.get_param('predictions')
+        if hasattr(self, 'pred'):
+            prediction = self.get_param('pred')
             if hasattr(self, 'activation'):
-                return predictions * self.get_param('activation')
+                return prediction * self.get_param('activation')
             else:
-                return None
+                return prediction * self.calc_activation(x)
         else:
             return None
     
@@ -1396,11 +1395,11 @@ class RuleSet(object):
         self.rules.pop(idx)
         self.rules.insert(idx, rule)
     
-    def sort_by(self, criterion, maximized):
+    def sort_by(self, crit, maximized):
         """
         Sort the RuleSet object (self) by a criteria criterion
         """
-        self.rules.sort(key=lambda x: x.get_param(criterion),
+        self.rules.sort(key=lambda x: x.get_param(crit),
                         reverse=maximized)
     
     def drop_duplicates(self):
@@ -1416,7 +1415,7 @@ class RuleSet(object):
         """
         if cols is None:
             cols = ['Features_Name', 'BMin', 'BMax',
-                    'Cov', 'predictions', 'Var', 'criterion']
+                    'Cov', 'Pred', 'Var', 'Crit']
         
         df = pd.DataFrame(index=self.get_rules_name(),
                           columns=cols)
@@ -1507,6 +1506,25 @@ class RuleSet(object):
         list(map(lambda rule, rules_id: rule.make_name(rules_id),
                  self, range(len(self))))
     
+    def make_selected_df(self):
+        df = self.to_df()
+    
+        df.rename(columns={"Cov": "Coverage", "Pred": "Prediction",
+                           'Var': 'Variance', 'Crit': 'Criterion'},
+                  inplace=True)
+    
+        df['Conditions'] = [make_condition(rule) for rule in self]
+        selected_df = df[['Conditions', 'Coverage',
+                          'Prediction', 'Variance',
+                          'Criterion']].copy()
+    
+        selected_df['Coverage'] = selected_df.Coverage.round(2)
+        selected_df['Prediction'] = selected_df.Prediction.round(2)
+        selected_df['Variance'] = selected_df.Variance.round(2)
+        selected_df['Criterion'] = selected_df.Criterion.round(2)
+        
+        return selected_df
+    
     def plot_counter_variables(self):
         counter = get_variables_count(self)
     
@@ -1521,13 +1539,13 @@ class RuleSet(object):
     
         return f
     
-    def plot_dist(self, metric):
+    def plot_dist(self, x=None, metric=dist):
         rules_names = self.get_rules_name()
     
-        activation_list = [rule.get_prediction_vector() for rule in self]
-        prediction_matrix = np.array(activation_list)
+        predictions_vector_list = [rule.get_predictions_vector(x) for rule in self]
+        predictions_matrix = np.array(predictions_vector_list)
     
-        distance_vector = scipy_dist.pdist(prediction_matrix, metric=metric)
+        distance_vector = scipy_dist.pdist(predictions_matrix, metric=metric)
         distance_matrix = scipy_dist.squareform(distance_vector)
     
         # Set up the matplotlib figure
@@ -1761,7 +1779,7 @@ class Learning(BaseEstimator):
                         print('No rules for complexity %s' % str(cp))
                         break
                     
-                    ruleset.sort_by('criterion', False)
+                    ruleset.sort_by('crit', False)
             self.set_params(ruleset=ruleset)
             
             # --------------
@@ -1805,7 +1823,7 @@ class Learning(BaseEstimator):
         ruleset = functools.reduce(operator.add, ruleset)
         
         ruleset = RuleSet(ruleset)
-        ruleset.sort_by('criterion', False)
+        ruleset.sort_by('crit', False)
         
         self.set_params(ruleset=ruleset)
     
@@ -1885,13 +1903,12 @@ class Learning(BaseEstimator):
             
         for i in range(1, i_max):
             rs_cpi = ruleset.extract_cp(cp=i)
-            rs_cpc = ruleset.extract_cp(cp=cp - 1)
-            # rs_candidate = self.select_candidates(cp - i)
+            rs_cpc = ruleset.extract_cp(cp=cp - i)
+            # rs_candidate = self.select_candidates(cp - 1)
         
             if len(rs_cpc) > 0:
                 inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
                     delayed(calc_intersection)(rule, rs_cpi, cp,
-                                               cov_min, cov_max,
                                                cov_min, cov_max,
                                                X, low_memory)
                     for rule in rs_cpc)
@@ -1936,15 +1953,15 @@ class Learning(BaseEstimator):
             
         print('Number rules after  condition on the coverage rate test: %s'
               % str(len(sub_ruleset)))
-        signi_ruleset = RuleSet(list(filter(lambda rule: significant_test(rule, ymean,
-                                                                          sigma, beta),
-                                            sub_ruleset)))
+        filter_rs = filter(lambda rule: significant_test(rule, ymean,
+                                                         sigma, beta), sub_ruleset)
+        significant_ruleset = RuleSet(list(filter_rs))
         print('Number rules after significant test: %s' % str(len(sub_ruleset)))
 
-        if len(signi_ruleset) > 0:
-            # signi_ruleset.sort_by('cov', True)
-            signi_ruleset.sort_by('criterion', False)
-            rg_add, selected_rs = self.select(signi_ruleset)
+        if len(significant_ruleset) > 0:
+            # significant_ruleset.sort_by('cov', True)
+            significant_ruleset.sort_by('crit', False)
+            rg_add, selected_rs = self.select(significant_ruleset)
             print('Number rules significant selected rules: %s' % str(rg_add))
 
         else:
@@ -1953,14 +1970,14 @@ class Learning(BaseEstimator):
 
         # Add insignificant rules
         if selected_rs.calc_coverage(x_train) < 1:
-            insigni_ruleset = RuleSet(list(filter(lambda rule: insigni_test(rule, sigma,
-                                                                            epsilon),
-                                                  sub_ruleset)))
+            filter_rs = filter(lambda rule: insignificant_test(rule, sigma,
+                                                               epsilon), sub_ruleset)
+            insignificant_ruleset = RuleSet(list(filter_rs))
             print('Number rules after insignificant test: %s'
-                  % str(len(insigni_ruleset)))
+                  % str(len(insignificant_ruleset)))
 
-            insigni_ruleset.sort_by('cov', True)
-            rg_add, selected_rs = self.select(insigni_ruleset, selected_rs)
+            insignificant_ruleset.sort_by('cov', True)
+            rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
             print('Number insignificant rules added : %s' % str(rg_add))
 
         else:
@@ -2175,17 +2192,17 @@ class Learning(BaseEstimator):
                 if var_name not in bins_dict:
                     if len(set(xcol)) >= nb_bucket:
                         bins = find_bins(xcol, nb_bucket)
-                        discretized_col = discretize(xcol, nb_bucket, bins)
+                        discretized_column = discretize(xcol, nb_bucket, bins)
                         bins_dict[var_name] = bins
                     else:
-                        discretized_col = xcol
+                        discretized_column = xcol
                 else:
                     bins = bins_dict[var_name]
-                    discretized_col = discretize(xcol, nb_bucket, bins)
+                    discretized_column = discretize(xcol, nb_bucket, bins)
             else:
-                discretized_col = xcol
+                discretized_column = xcol
             
-            x_mat.append(discretized_col)
+            x_mat.append(discretized_column)
         
         return np.array(x_mat).T
     
@@ -2233,14 +2250,14 @@ class Learning(BaseEstimator):
             bmax = rule_condition.get_param('bmax')
             cp_rule = rule.get_param('cp')
             
-            if rule.get_param('predictions') > 0:
+            if rule.get_param('pred') > 0:
                 hatch = '/'
                 facecolor = col_pos
-                alpha = min(1, abs(rule.get_param('predictions')) / 2.0)
+                alpha = min(1, abs(rule.get_param('pred')) / 2.0)
             else:
                 hatch = '\\'
                 facecolor = col_neg
-                alpha = min(1, abs(rule.get_param('predictions')) / 2.0)
+                alpha = min(1, abs(rule.get_param('pred')) / 2.0)
             
             if cp_rule == 1:
                 if var[0] == var1:
@@ -2404,12 +2421,15 @@ class Learning(BaseEstimator):
         
         return f
     
-    def plot_dist(self, metric=dist):
+    def plot_dist(self, x=None):
         """
         Function plots a graphical correlation of rules.
         """
         rs = self.get_param('selected_rs')
-        f = rs.plot_dict(metric)
+        if x is None and self.get_param('low_memory'):
+            x = self.get_param('X')
+            
+        f = rs.plot_dist(x=x)
         
         return f
         
@@ -2464,7 +2484,7 @@ class Learning(BaseEstimator):
                     for b in range(int(bmin[j]), int(bmax[j]) + 1):
                         var_id = vars_list.index(var_name[j])
                         if add_pred:
-                            count_mat[b, var_id] += rule.get_param('predictions')
+                            count_mat[b, var_id] += rule.get_param('pred')
                         else:
                             count_mat[b, var_id] += 1
                 else:
@@ -2486,22 +2506,7 @@ class Learning(BaseEstimator):
                       DataFrame of selected RuleSet for presentation
         """
         selected_rs = self.get_param('selected_rs')
-        df = selected_rs.to_df()
-        
-        df.rename(columns={"Cov": "Coverage", "predictions": "Prediction",
-                           'Var': 'Variance', 'criterion': 'Criterion'},
-                  inplace=True)
-        
-        df['Conditions'] = [make_condition(rule) for rule in selected_rs]
-        selected_df = df[['Conditions', 'Coverage',
-                          'Prediction', 'Variance',
-                          'Criterion']].copy()
-        
-        selected_df['Coverage'] = selected_df.Coverage.round(2)
-        selected_df['Prediction'] = selected_df.Prediction.round(2)
-        selected_df['Variance'] = selected_df.Variance.round(2)
-        selected_df['Criterion'] = selected_df.Criterion.round(2)
-        
+        selected_df = selected_rs.make_selected_df()
         return selected_df
     
     """------   Getters   -----"""
