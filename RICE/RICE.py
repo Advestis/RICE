@@ -21,6 +21,7 @@ from sklearn.base import BaseEstimator
 from sklearn.metrics import accuracy_score, r2_score
 from sklearn.utils import check_array
 from sklearn.externals.joblib import Parallel, delayed
+from sklearn.cluster import KMeans
 
 """
 ---------
@@ -193,7 +194,7 @@ def eval_rule(rule, X, y, method, cov_min, cov_max, low_memory):
         return None
 
 
-def calc_intersection(rule, ruleset_cp1, cp,
+def calc_intersection(rule, ruleset, cp,
                       cov_min, cov_max, X=None,
                       low_memory=False):
     """
@@ -204,8 +205,8 @@ def calc_intersection(rule, ruleset_cp1, cp,
     rule : {rule type}
              An rule object
 
-    ruleset_cp1 : {ruleset type}
-                 A set of rule of complexity 1
+    ruleset : {ruleset type}
+                 A set of rule
 
     cp : {int type, cp > 1}
          A given complexity
@@ -230,20 +231,20 @@ def calc_intersection(rule, ruleset_cp1, cp,
                  rules from the rules set ruleset_cp1.
 
     """
-    if cp == 2:
-        i = ruleset_cp1.rules.index(rule)
-        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max, X, low_memory)
-                      for rules_cp1 in ruleset_cp1[i + 1:]]
-        rules_list = list(filter(None, rules_list))  # to drop bad rules
-        rules_list = list(set(rules_list))
-        return rules_list
-    
-    else:
-        rules_list = [rule.intersect(rules_cp1, cp, cov_min, cov_max, X, low_memory)
-                      for rules_cp1 in ruleset_cp1]
-        rules_list = list(filter(None, rules_list))  # to drop bad rules
-        rules_list = list(set(rules_list))
-        return rules_list
+    # if cp == 2:
+    #     i = ruleset.rules.index(rule)
+    #     rules_list = [rule.intersect(r, cp, cov_min, cov_max, X, low_memory)
+    #                   for r in ruleset[i + 1:]]
+    #     rules_list = list(filter(None, rules_list))  # to drop bad rules
+    #     rules_list = list(set(rules_list))
+    #     return rules_list
+    #
+    # else:
+    rules_list = [rule.intersect(r, cp, cov_min, cov_max, X, low_memory)
+                  for r in ruleset]
+    rules_list = list(filter(None, rules_list))  # to drop bad rules
+    rules_list = list(set(rules_list))
+    return rules_list
 
 
 def union_test(ruleset, rule, j, gamma, X=None):
@@ -330,6 +331,29 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     return criterion
 
 
+def select_candidates(ruleset, nb_candidates, X, n_jobs):
+    """
+    Returns a selection of candidates to increase complexity
+    for a given complexity (cp)
+    """
+    if nb_candidates is not None and len(ruleset) > nb_candidates:
+        rules_list = []
+        activation_matrix = np.array([rule.get_activation(X) for rule in ruleset])
+        
+        cluster_algo = KMeans(n_clusters=nb_candidates, n_jobs=n_jobs)
+        cluster_algo.fit(activation_matrix)
+        
+        for i in range(nb_candidates):
+            boolean_vector = [cluster == i for cluster in cluster_algo.labels_]
+            sub_rs = RuleSet(np.extract(boolean_vector, ruleset))
+            sub_rs.sort_by('var', True)
+            rules_list.append(sub_rs[0])
+            
+        return RuleSet(rules_list)
+    else:
+        return ruleset
+    
+    
 def add_no_rule(rs, X, y):
     """
     Return the two smallest rule of CP1 that cover all none covered
@@ -1101,9 +1125,8 @@ class Rule(object):
             cov = calc_coverage(activation_vector)
             self.set_params(cov=cov)
 
-            if cov > cov_max or cov < cov_min:
+            if cov >= cov_max or cov <= cov_min:
                 self.set_params(out=True)
-
             else:
                 prediction = calc_prediction(activation_vector, y)
                 self.set_params(pred=prediction)
@@ -1274,7 +1297,7 @@ class RuleSet(object):
     """
     
     def __init__(self, rs):
-        if type(rs) == list:
+        if type(rs) in [list, np.ndarray]:
             self.rules = rs
         elif type(rs) == RuleSet:
             self.rules = rs.get_rules()
@@ -1399,8 +1422,8 @@ class RuleSet(object):
         """
         Sort the RuleSet object (self) by a criteria criterion
         """
-        self.rules.sort(key=lambda x: x.get_param(crit),
-                        reverse=maximized)
+        self.rules = sorted(self.rules, key=lambda x: x.get_param(crit),
+                            reverse=maximized)
     
     def drop_duplicates(self):
         """
@@ -1640,7 +1663,7 @@ class Learning(BaseEstimator):
         self.bins = dict()
         self.critlist = []
         self.low_memory = False
-        
+        self.nb_candidates = None
         for arg, val in parameters.items():
             setattr(self, arg, val)
         
@@ -1856,34 +1879,7 @@ class Learning(BaseEstimator):
             return rs_cpup
         else:
             return []
-    
-    # def select_candidates(self, rules_cp):
-    #     """
-    #     Returns a selection of candidates to increase complexity
-    #     for a given complexity (cp)
-    #     """
-    #     ruleset = self.get_param('ruleset')
-    #     ruleset_candidates = ruleset.extract_cp(rules_cp)
-    #     ruleset_candidates.sort_by('var', True)
-    #
-    #     nb_candidates = self.get_param('nb_candidates')
-    #     if nb_candidates is not None:
-    #         if len(ruleset_candidates) > nb_candidates:
-    #             pos_ruleset = ruleset_candidates.extract_greater('predictions', 0)
-    #             neg_ruleset = ruleset_candidates.extract_least('predictions', 0)
-    #
-    #             id_pos = float(len(pos_ruleset)) / len(ruleset_candidates)\
-    #             * nb_candidates
-    #             id_neg = float(len(neg_ruleset)) / len(ruleset_candidates)\
-    #             * nb_candidates
-    #
-    #             rules_list = pos_ruleset[:int(id_pos)]
-    #             rules_list += neg_ruleset[:int(id_neg)]
-    #
-    #             ruleset_candidates = RuleSet(list(rules_list))
-    #
-    #     return ruleset_candidates
-    
+
     def find_candidates(self, cp):
         """
         Returns the intersection of all suitable rules
@@ -1892,9 +1888,10 @@ class Learning(BaseEstimator):
         rules_list = []
         i_max = int(cp / 2) + 1
         ruleset = self.get_param('ruleset')
-        nb_jobs = self.get_param('nb_jobs')
         cov_min = self.get_param('covmin')
         cov_max = self.get_param('covmax')
+        nb_candidates = self.get_param('nb_candidates')
+        nb_jobs = self.get_param('nb_jobs')
         low_memory = self.get_param('low_memory')
         if low_memory:
             X = self.get_param('X')
@@ -1902,16 +1899,16 @@ class Learning(BaseEstimator):
             X = None
             
         for i in range(1, i_max):
-            rs_cpi = ruleset.extract_cp(cp=i)
-            rs_cpc = ruleset.extract_cp(cp=cp - i)
-            # rs_candidate = self.select_candidates(cp - 1)
-        
-            if len(rs_cpc) > 0:
+            rs1 = select_candidates(ruleset.extract_cp(cp=i),
+                                    nb_candidates, X, nb_jobs)
+            rs2 = select_candidates(ruleset.extract_cp(cp=cp - i),
+                                    nb_candidates, X, nb_jobs)
+            if len(rs2) > 0:
                 inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                    delayed(calc_intersection)(rule, rs_cpi, cp,
+                    delayed(calc_intersection)(rule, rs1, cp,
                                                cov_min, cov_max,
                                                X, low_memory)
-                    for rule in rs_cpc)
+                    for rule in rs2)
     
                 inter_list = functools.reduce(operator.add, inter_list)
     
@@ -2135,7 +2132,6 @@ class Learning(BaseEstimator):
                             multioutput='variance_weighted')
     
     """------   Data functions   -----"""
-    
     def validate_X_predict(self, X, check_input):
         """
         Validate X whenever one tries to predict, apply, predict_proba
