@@ -194,9 +194,8 @@ def eval_rule(rule, X, y, method, cov_min, cov_max, low_memory):
         return None
 
 
-def calc_intersection(rule, ruleset, cp,
-                      cov_min, cov_max, X=None,
-                      low_memory=False):
+def calc_intersection(rule, ruleset, cov_min,
+                      cov_max, X=None, low_memory=False):
     """
     Calculation of all statistics of an rules
 
@@ -207,9 +206,6 @@ def calc_intersection(rule, ruleset, cp,
 
     ruleset : {ruleset type}
                  A set of rule
-
-    cp : {int type, cp > 1}
-         A given complexity
     
     cov_min : {float type such as 0 <= covmin <= 1}
               The maximal coverage of one rule
@@ -240,7 +236,7 @@ def calc_intersection(rule, ruleset, cp,
     #     return rules_list
     #
     # else:
-    rules_list = [rule.intersect(r, cp, cov_min, cov_max, X, low_memory)
+    rules_list = [rule.intersect(r, cov_min, cov_max, X, low_memory)
                   for r in ruleset]
     rules_list = list(filter(None, rules_list))  # to drop bad rules
     rules_list = list(set(rules_list))
@@ -338,15 +334,17 @@ def select_candidates(ruleset, nb_candidates, X, n_jobs):
     """
     if nb_candidates is not None and len(ruleset) > nb_candidates:
         rules_list = []
-        activation_matrix = np.array([rule.get_activation(X) for rule in ruleset])
         
-        cluster_algo = KMeans(n_clusters=nb_candidates, n_jobs=n_jobs)
-        cluster_algo.fit(activation_matrix)
+        if all(map(lambda rule: hasattr(rule, 'cluster'), ruleset)) is False:
+            activation_matrix = np.array([rule.get_activation(X) for rule in ruleset])
+            
+            cluster_algo = KMeans(n_clusters=nb_candidates, n_jobs=n_jobs)
+            cluster_algo.fit(activation_matrix)
+            ruleset.set_rules_params(cluster_algo.labels_, 'cluster')
         
         for i in range(nb_candidates):
-            boolean_vector = [cluster == i for cluster in cluster_algo.labels_]
-            sub_rs = RuleSet(np.extract(boolean_vector, ruleset))
-            sub_rs.sort_by('var', True)
+            sub_rs = ruleset.extract('cluster', i)
+            sub_rs.sort_by('crit', True)
             rules_list.append(sub_rs[0])
             
         return RuleSet(rules_list)
@@ -1014,7 +1012,7 @@ class Rule(object):
         """
         return self.get_param('cp') + rule.get_param('cp') == cp
     
-    def intersect_test(self, rule, cp, X):
+    def intersect_test(self, rule, X):
         """
         Test to know if a rule (self) and an other (rule)
         could be intersected.
@@ -1023,11 +1021,8 @@ class Rule(object):
         Test 2: self and rule have not condition on the same variable
         Test 3: self and rule have not included activation
         """
-        if self.test_cp(rule, cp):
-            if self.test_variables(rule) is False:
-                return self.test_included(rule=rule, x=X)
-            else:
-                return None
+        if self.test_variables(rule) is False:
+            return self.test_included(rule=rule, x=X)
         else:
             return None
     
@@ -1060,7 +1055,7 @@ class Rule(object):
         
         return conditions
     
-    def intersect(self, rule, cp, cov_min, cov_max, X, low_memory):
+    def intersect(self, rule, cov_min, cov_max, X, low_memory):
         """
         Compute a suitable rule object from the intersection of an rule
         (self) and an other (rulessert).
@@ -1068,7 +1063,7 @@ class Rule(object):
         """
         new_rule = None
         # if self.get_param('pred') * rule.get_param('pred') > 0:
-        activation = self.intersect_test(rule, cp, X)
+        activation = self.intersect_test(rule, X)
         if activation is not None:
             cov = calc_coverage(activation)
             if cov_min <= cov <= cov_max:
@@ -1630,7 +1625,14 @@ class RuleSet(object):
         assert type(rules_list) == list, 'Must be a list object'
         self.rules = rules_list
 
-
+    def set_rules_params(self, params, param_name):
+        assert len(params) == len(self), 'Must have the same length that RuleSet'
+        i = 0
+        for rule in self.rules:
+            setattr(rule, param_name, params[i])
+            i += 1
+            
+            
 class Learning(BaseEstimator):
     """
     ...
@@ -1886,7 +1888,6 @@ class Learning(BaseEstimator):
         for a given complexity (cp)
         """
         rules_list = []
-        i_max = int(cp / 2) + 1
         ruleset = self.get_param('ruleset')
         cov_min = self.get_param('covmin')
         cov_max = self.get_param('covmax')
@@ -1898,24 +1899,22 @@ class Learning(BaseEstimator):
         else:
             X = None
             
-        for i in range(1, i_max):
-            rs1 = select_candidates(ruleset.extract_cp(cp=i),
-                                    nb_candidates, X, nb_jobs)
-            rs2 = select_candidates(ruleset.extract_cp(cp=cp - i),
-                                    nb_candidates, X, nb_jobs)
-            if len(rs2) > 0:
-                inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                    delayed(calc_intersection)(rule, rs1, cp,
-                                               cov_min, cov_max,
-                                               X, low_memory)
-                    for rule in rs2)
-    
-                inter_list = functools.reduce(operator.add, inter_list)
-    
-                inter_list = list(filter(None, inter_list))  # to drop bad rules
-                inter_list = list(set(inter_list))  # to drop duplicates
+        rs1 = select_candidates(ruleset.extract_cp(cp=1),
+                                nb_candidates, X, nb_jobs)
+        rs2 = select_candidates(ruleset.extract_cp(cp=cp - 1),
+                                nb_candidates, X, nb_jobs)
+        if len(rs2) > 0:
+            inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
+                delayed(calc_intersection)(rule, rs1, cov_min, cov_max,
+                                           X, low_memory)
+                for rule in rs2)
 
-                rules_list += inter_list
+            inter_list = functools.reduce(operator.add, inter_list)
+
+            inter_list = list(filter(None, inter_list))  # to drop bad rules
+            inter_list = list(set(inter_list))  # to drop duplicates
+
+            rules_list += inter_list
                 
         return rules_list
     
