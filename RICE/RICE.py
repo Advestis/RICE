@@ -344,7 +344,7 @@ def select_candidates(ruleset, nb_candidates, X, n_jobs):
         
         for i in range(nb_candidates):
             sub_rs = ruleset.extract('cluster', i)
-            sub_rs.sort_by('crit', True)
+            sub_rs.sort_by('var', True)
             rules_list.append(sub_rs[0])
             
         return RuleSet(rules_list)
