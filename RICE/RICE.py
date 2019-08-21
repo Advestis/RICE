@@ -45,9 +45,9 @@ def make_condition(rule):
                      A new string for the condition of the rule
     """
     conditions = rule.get_param('conditions').get_attr()
-    cp = rule.get_param('cp')
+    length = rule.get_param('length')
     conditions_str = ''
-    for i in range(cp):
+    for i in range(length):
         if i > 0:
             conditions_str += ' & '
             
@@ -224,12 +224,12 @@ def calc_intersection(rule, ruleset, cov_min,
     ------
     rules_list : {list type}
                  List of rule made by intersection of rule with
-                 rules from the rules set ruleset_cp1.
+                 rules from the rules set ruleset_l1.
 
     """
-    # if cp == 2:
+    # if l == 2:
     #     i = ruleset.rules.index(rule)
-    #     rules_list = [rule.intersect(r, cp, cov_min, cov_max, X, low_memory)
+    #     rules_list = [rule.intersect(r, l, cov_min, cov_max, X, low_memory)
     #                   for r in ruleset[i + 1:]]
     #     rules_list = list(filter(None, rules_list))  # to drop bad rules
     #     rules_list = list(set(rules_list))
@@ -254,7 +254,7 @@ def union_test(ruleset, rule, j, gamma, X=None):
              An rule object
 
     rule : {rule type}
-             A set of rule of complexity 1
+             A set of rule of length 1
 
     j : {int type or None}
         If j is not not we drop the j-th rule of ruleset
@@ -327,22 +327,22 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     return criterion
 
 
-def select_candidates(ruleset, nb_candidates, X, n_jobs):
+def select_candidates(ruleset, k, X, n_jobs):
     """
-    Returns a selection of candidates to increase complexity
-    for a given complexity (cp)
+    Returns a set of candidates to increase length
+    with a maximal number k
     """
-    if nb_candidates is not None and len(ruleset) > nb_candidates:
+    if k is not None and len(ruleset) > k:
         rules_list = []
         
         if all(map(lambda rule: hasattr(rule, 'cluster'), ruleset)) is False:
             activation_matrix = np.array([rule.get_activation(X) for rule in ruleset])
             
-            cluster_algo = KMeans(n_clusters=nb_candidates, n_jobs=n_jobs)
+            cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
             cluster_algo.fit(activation_matrix)
             ruleset.set_rules_params(cluster_algo.labels_, 'cluster')
         
-        for i in range(nb_candidates):
+        for i in range(k):
             sub_rs = ruleset.extract('cluster', i)
             sub_rs.sort_by('var', True)
             rules_list.append(sub_rs[0])
@@ -354,7 +354,7 @@ def select_candidates(ruleset, nb_candidates, X, n_jobs):
     
 def add_no_rule(rs, X, y):
     """
-    Return the two smallest rule of CP1 that cover all none covered
+    Return the two smallest rule of l1 that cover all none covered
     positive and negative points
     
     Parameters
@@ -791,21 +791,21 @@ class RuleConditions(object):
         assert isinstance(features_name, (tuple, list, np.ndarray)),\
             'Type of parameter must be iterable tuple, list or array' % features_name
         self.features_name = features_name
-        cp = len(features_name)
+        length = len(features_name)
         
         assert isinstance(features_index, (tuple, list, np.ndarray)),\
             'Type of parameter must be iterable tuple, list or array' % features_name
-        assert len(features_index) == cp, \
+        assert len(features_index) == length, \
             'Parameters must have the same length' % features_name
         self.features_index = features_index
         
         assert isinstance(bmin, (tuple, list, np.ndarray)),\
             'Type of parameter must be iterable tuple, list or array' % features_name
-        assert len(bmin) == cp, \
+        assert len(bmin) == length, \
             'Parameters must have the same length' % features_name
         assert isinstance(bmax, (tuple, list, np.ndarray)),\
             'Type of parameter must be iterable tuple, list or array' % features_name
-        assert len(bmax) == cp, \
+        assert len(bmax) == length, \
             'Parameters must have the same length' % features_name
         if type(bmin[0]) != str:
             assert all(map(lambda a, b: a <= b, bmin, bmax)), \
@@ -816,11 +816,11 @@ class RuleConditions(object):
         
         assert isinstance(xmax, (tuple, list, np.ndarray)),\
             'Type of parameter must be iterable tuple, list or array' % features_name
-        assert len(xmax) == cp, \
+        assert len(xmax) == length, \
             'Parameters must have the same length' % features_name
         assert isinstance(xmin, (tuple, list, np.ndarray)),\
             'Type of parameter must be iterable tuple, list or array' % features_name
-        assert len(xmin) == cp, \
+        assert len(xmin) == length, \
             'Parameters must have the same length' % features_name
         self.xmin = xmin
         self.xmax = xmax
@@ -866,11 +866,11 @@ class RuleConditions(object):
         activation_vector: {array-like matrix, shape=(n_samples, 1)}
                      The activation vector
         """
-        cp = len(self.features_name)
+        length = len(self.features_name)
         geq_min = True
         leq_min = True
         not_nan = True
-        for i in range(cp):
+        for i in range(length):
             col_index = self.features_index[i]
             x_col = X[:, col_index]
             
@@ -948,7 +948,7 @@ class Rule(object):
             'Must be a RuleCondition object'
         
         self.conditions = rule_conditions
-        self.cp = len(rule_conditions.get_param('features_index'))
+        self.length = len(rule_conditions.get_param('features_index'))
     
     def __repr__(self):
         return self.__str__()
@@ -1005,19 +1005,19 @@ class Rule(object):
         else:
             return False
     
-    def test_cp(self, rule, cp):
+    def test_length(self, rule, length):
         """
         Test to know if a rule (self) and an other (rule)
-        could be intersected to have a new rule of complexity cp.
+        could be intersected to have a new rule of length length.
         """
-        return self.get_param('cp') + rule.get_param('cp') == cp
+        return self.get_param('length') + rule.get_param('length') == length
     
     def intersect_test(self, rule, X):
         """
         Test to know if a rule (self) and an other (rule)
         could be intersected.
 
-        Test 1: the sum of complexities of self and rule are egal to cp
+        Test 1: the sum of complexities of self and rule are egal to l
         Test 2: self and rule have not condition on the same variable
         Test 3: self and rule have not included activation
         """
@@ -1216,8 +1216,8 @@ class Rule(object):
                    be defined with the name of learning
         """
         name = 'R ' + str(num)
-        cp = self.get_param('cp')
-        name += '(' + str(cp) + ')'
+        length = self.get_param('length')
+        name += '(' + str(length) + ')'
         prediction = self.get_param('pred')
         if prediction > 0:
             name += '+'
@@ -1382,12 +1382,12 @@ class RuleSet(object):
         rules_list = list(filter(lambda rule: rule.get_param(param) < val, self))
         return RuleSet(rules_list)
     
-    def extract_cp(self, cp):
+    def extract_length(self, length):
         """
         Extract a RuleSet object from self such as each rules have a
-        complexity cp.
+        length l.
         """
-        rules_list = list(filter(lambda rule: rule.get_param('cp') == cp, self))
+        rules_list = list(filter(lambda rule: rule.get_param('length') == length, self))
         return RuleSet(rules_list)
     
     def extract(self, param, val):
@@ -1650,22 +1650,26 @@ class Learning(BaseEstimator):
                     and d the number of features
                     Choose the number a bucket for the discretization
 
-        cp : {int type} default d
-             Choose the maximal complexity of one rule
+        length : {int type} default d
+                 Choose the maximal length of one rule
         
         gamma : {float type such as 0 <= gamma <= 1} default 1
-                   Choose the maximal intersection rate begin a rule and
-                   a current selected ruleset
-                   
+                Choose the maximal intersection rate begin a rule and
+                a current selected ruleset
+                
+        k : {int type} default 500
+            The maximal number of candidate to increase length
+            
         nb_jobs : {int type} default number of core -2
-                  Select the number of CPU used
+                  Select the number of lU used
         """
         self.selected_rs = RuleSet([])
         self.ruleset = RuleSet([])
         self.bins = dict()
         self.critlist = []
         self.low_memory = False
-        self.nb_candidates = None
+        self.k = 500
+        
         for arg, val in parameters.items():
             setattr(self, arg, val)
         
@@ -1751,9 +1755,9 @@ class Learning(BaseEstimator):
         self.set_params(features_index=features_index)
         self.set_params(features_name=features_name)
         
-        if hasattr(self, 'cp') is False:
-            cp = len(features_name)
-            self.set_params(cp=cp)
+        if hasattr(self, 'length') is False:
+            length = len(features_name)
+            self.set_params(length=length)
         
         # Turn the matrix X in a discret matrix
         X_discretized = self.discretize(X)
@@ -1774,34 +1778,34 @@ class Learning(BaseEstimator):
     
     def find_rules(self):
         """
-        Find all rules for all complexity <= cp
+        Find all rules for all length <= l
         then selects the best subset by minimization
         of the empirical risk
         """
-        complexity = self.get_param('cp')
-        assert complexity > 0, \
-            'Complexity must be strictly superior to 0'
+        length = self.get_param('length')
+        assert length > 0, \
+            'length must be strictly superior to 0'
         
         selected_rs = self.get_param('selected_rs')
         
         # -----------
         # DESIGN PART
         # -----------
-        self.calc_cp1()
+        self.calc_length_1()
         ruleset = self.get_param('ruleset')
         
         if len(ruleset) > 0:
-            for cp in range(2, complexity + 1):
-                print('Design for complexity %s' % str(cp))
-                if len(selected_rs.extract_cp(cp)) == 0:
-                    # seeking a set of rules with a complexity cp
-                    ruleset_cpup = self.calc_cpc(cp)
+            for l in range(2, length + 1):
+                print('Design for length %s' % str(l))
+                if len(selected_rs.extract_length(l)) == 0:
+                    # seeking a set of rules with a length l
+                    ruleset_length_up = self.calc_length_c(l)
                     
-                    if len(ruleset_cpup) > 0:
-                        ruleset += ruleset_cpup
+                    if len(ruleset_length_up) > 0:
+                        ruleset += ruleset_length_up
                         self.set_params(ruleset=ruleset)
                     else:
-                        print('No rules for complexity %s' % str(cp))
+                        print('No rules for length %s' % str(l))
                         break
                     
                     ruleset.sort_by('crit', False)
@@ -1821,9 +1825,9 @@ class Learning(BaseEstimator):
         else:
             print('No rules found !')
     
-    def calc_cp1(self):
+    def calc_length_1(self):
         """
-        Compute all rules of complexity one and keep the best.
+        Compute all rules of length one and keep the best.
         """
         features_name = self.get_param('features_name')
         features_index = self.get_param('features_index')
@@ -1852,9 +1856,9 @@ class Learning(BaseEstimator):
         
         self.set_params(ruleset=ruleset)
     
-    def calc_cpc(self, cp):
+    def calc_length_c(self, length):
         """
-        Returns a ruleset of rules with complexity=cp.
+        Returns a ruleset of rules with a given length.
         """
         nb_jobs = self.get_param('nb_jobs')
         X = self.get_param('X')
@@ -1864,7 +1868,7 @@ class Learning(BaseEstimator):
         cov_min = self.get_param('covmin')
         low_memory = self.get_param('low_memory')
         
-        rules_list = self.find_candidates(cp)
+        rules_list = self.find_candidates(length)
         
         if len(rules_list) > 0:
             if nb_jobs == 1:
@@ -1876,22 +1880,22 @@ class Learning(BaseEstimator):
                     for rule in rules_list)
             
             rs = list(filter(None, rs))
-            rs_cpup = RuleSet(rs)
-            rs_cpup = rs_cpup.drop_duplicates()
-            return rs_cpup
+            rs_length_up = RuleSet(rs)
+            rs_length_up = rs_length_up.drop_duplicates()
+            return rs_length_up
         else:
             return []
 
-    def find_candidates(self, cp):
+    def find_candidates(self, length):
         """
         Returns the intersection of all suitable rules
-        for a given complexity (cp)
+        for a given length
         """
         rules_list = []
         ruleset = self.get_param('ruleset')
         cov_min = self.get_param('covmin')
         cov_max = self.get_param('covmax')
-        nb_candidates = self.get_param('nb_candidates')
+        k = self.get_param('k')
         nb_jobs = self.get_param('nb_jobs')
         low_memory = self.get_param('low_memory')
         if low_memory:
@@ -1899,10 +1903,10 @@ class Learning(BaseEstimator):
         else:
             X = None
             
-        rs1 = select_candidates(ruleset.extract_cp(cp=1),
-                                nb_candidates, X, nb_jobs)
-        rs2 = select_candidates(ruleset.extract_cp(cp=cp - 1),
-                                nb_candidates, X, nb_jobs)
+        rs1 = select_candidates(ruleset.extract_length(length=1),
+                                k, X, nb_jobs)
+        rs2 = select_candidates(ruleset.extract_length(length=length - 1),
+                                k, X, nb_jobs)
         if len(rs2) > 0:
             inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
                 delayed(calc_intersection)(rule, rs1, cov_min, cov_max,
@@ -1918,7 +1922,7 @@ class Learning(BaseEstimator):
                 
         return rules_list
     
-    def select_rules(self, cp):
+    def select_rules(self, length):
         """
         Returns a subset of a given ruleset.
         This subset minimizes the empirical contrast on the learning set
@@ -1932,8 +1936,8 @@ class Learning(BaseEstimator):
         x_train = self.get_param('X')
         y_train = self.get_param('y')
         
-        if cp > 0:
-            sub_ruleset = ruleset.extract_cp(cp)
+        if length > 0:
+            sub_ruleset = ruleset.extract_length(length)
         else:
             sub_ruleset = copy.deepcopy(ruleset)
 
@@ -2201,7 +2205,7 @@ class Learning(BaseEstimator):
         
         return np.array(x_mat).T
     
-    def plot_rules(self, var1, var2, cp=None,
+    def plot_rules(self, var1, var2, length=None,
                    col_pos='red', col_neg='blue'):
         """
         Plot the rectangle activation zone of rules in a 2D plot
@@ -2215,8 +2219,8 @@ class Learning(BaseEstimator):
         var2 : {string type}
                Name of the second variable
 
-        cp : {int type}, optional
-             Option to plot only the cp1 or cp2 rules
+        length : {int type}, optional
+                 Option to plot only the length 1 or length 2 rules
 
         col_pos : {string type}, optional,
                   Name of the color of the zone of positive rules
@@ -2230,8 +2234,8 @@ class Learning(BaseEstimator):
         selected_rs = self.get_param('selected_rs')
         nb_bucket = self.get_param('nb_bucket')
         
-        if cp is not None:
-            sub_ruleset = selected_rs.extract_cp(cp)
+        if length is not None:
+            sub_ruleset = selected_rs.extract_length(length)
         else:
             sub_ruleset = selected_rs
         
@@ -2243,7 +2247,7 @@ class Learning(BaseEstimator):
             var = rule_condition.get_param('features_index')
             bmin = rule_condition.get_param('bmin')
             bmax = rule_condition.get_param('bmax')
-            cp_rule = rule.get_param('cp')
+            length_rule = rule.get_param('length')
             
             if rule.get_param('pred') > 0:
                 hatch = '/'
@@ -2254,7 +2258,7 @@ class Learning(BaseEstimator):
                 facecolor = col_neg
                 alpha = min(1, abs(rule.get_param('pred')) / 2.0)
             
-            if cp_rule == 1:
+            if length_rule == 1:
                 if var[0] == var1:
                     p = patches.Rectangle((bmin[0], 0),  # origin
                                           (bmax[0] - bmin[0]) + 0.99,  # width
@@ -2271,7 +2275,7 @@ class Learning(BaseEstimator):
                                           alpha=alpha)
                     plt.gca().add_patch(p)
             
-            elif cp_rule == 2:
+            elif length_rule == 2:
                 if var[0] == var1 and var[1] == var2:
                     p = patches.Rectangle((bmin[0], bmin[1]),
                                           (bmax[0] - bmin[0]) + 0.99,
@@ -2288,10 +2292,10 @@ class Learning(BaseEstimator):
                                           alpha=alpha)
                     plt.gca().add_patch(p)
         
-        if cp is None:
+        if length is None:
             plt.gca().set_title('rules activations')
         else:
-            plt.gca().set_title('rules cp%s activations' % str(cp))
+            plt.gca().set_title('rules l%s activations' % str(length))
         
         plt.gca().axis([-0.1, nb_bucket + 0.1, -0.1, nb_bucket + 0.1])
     
