@@ -327,30 +327,30 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     return criterion
 
 
-def select_candidates(ruleset, k, X, n_jobs):
+def find_cluster(ruleset, X, k, n_jobs):
+    prediction_matrix = np.array([rule.get_param('pred') *
+                                  rule.get_activation(X)
+                                  for rule in ruleset])
+    
+    cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
+    cluster_algo.fit(prediction_matrix)
+    return cluster_algo.labels_
+    
+    
+def select_candidates(ruleset, k):
     """
     Returns a set of candidates to increase length
     with a maximal number k
     """
-    if k is not None and len(ruleset) > k:
-        rules_list = []
-        
-        if all(map(lambda rule: hasattr(rule, 'cluster'), ruleset)) is False:
-            activation_matrix = np.array([rule.get_activation(X) for rule in ruleset])
-            
-            cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
-            cluster_algo.fit(activation_matrix)
-            ruleset.set_rules_params(cluster_algo.labels_, 'cluster')
-        
-        for i in range(k):
-            sub_rs = ruleset.extract('cluster', i)
+    rules_list = []
+    for i in range(k):
+        sub_rs = ruleset.extract('cluster', i)
+        if len(sub_rs) > 0:
             sub_rs.sort_by('var', True)
             rules_list.append(sub_rs[0])
-            
-        return RuleSet(rules_list)
-    else:
-        return ruleset
-    
+        
+    return RuleSet(rules_list)
+
     
 def add_no_rule(rs, X, y):
     """
@@ -1494,7 +1494,7 @@ class RuleSet(object):
         Compute the  activation vector of a set of rules
         """
         activation_vector = [rule.get_activation(x) for rule in self]
-        activation_vector = sum(activation_vector)
+        activation_vector = np.sum(activation_vector, axis=0)
         activation_vector = 1 * activation_vector.astype('bool')
         
         return activation_vector
@@ -1522,7 +1522,7 @@ class RuleSet(object):
         Add an attribute name at each rule of self
         """
         list(map(lambda rule, rules_id: rule.make_name(rules_id),
-                 self, range(len(self))))
+             self, range(len(self))))
     
     def make_selected_df(self):
         df = self.to_df()
@@ -1593,7 +1593,26 @@ class RuleSet(object):
         return f
     
     """------   Getters   -----"""
-    
+    def get_candidates(self, X, k, length, nb_jobs):
+        candidates = []
+        for l in [1, length-1]:
+            rs_length_l = self.extract_length(l)
+            if all(map(lambda rule: hasattr(rule, 'cluster'),
+                       rs_length_l)) is False:
+                clusters = find_cluster(rs_length_l,
+                                        X, k, nb_jobs)
+                self.set_rules_cluster(clusters, l)
+                
+            rules_list = []
+            for i in range(k):
+                sub_rs = rs_length_l.extract('cluster', i)
+                if len(sub_rs) > 0:
+                    sub_rs.sort_by('var', True)
+                    rules_list.append(sub_rs[0])
+            candidates.append(RuleSet(rules_list))
+            
+        return candidates[0], candidates[1]
+           
     def get_rules_param(self, param):
         """
         To get the list of a parameter param of the rules in self
@@ -1617,21 +1636,21 @@ class RuleSet(object):
         return self.rules
     
     """------   Setters   -----"""
-    
     def set_rules(self, rules_list):
         """
         To set a list of rule in self
         """
         assert type(rules_list) == list, 'Must be a list object'
         self.rules = rules_list
-
-    def set_rules_params(self, params, param_name):
-        assert len(params) == len(self), 'Must have the same length that RuleSet'
-        i = 0
-        for rule in self.rules:
-            setattr(rule, param_name, params[i])
-            i += 1
-            
+    
+    def set_rules_cluster(self, params, length):
+        rules_list = list(filter(lambda rule: rule.get_param('length') == length, self))
+        list(map(lambda rule, rules_id: rule.set_params(cluster=params[rules_id]),
+                 rules_list, range(len(rules_list))))
+        rules_list += list(filter(lambda rule: rule.get_param('length') != length, self))
+        
+        self.rules = rules_list
+        
             
 class Learning(BaseEstimator):
     """
@@ -1650,7 +1669,7 @@ class Learning(BaseEstimator):
                     and d the number of features
                     Choose the number a bucket for the discretization
 
-        length : {int type} default d
+        k_max : {int type} default d
                  Choose the maximal length of one rule
         
         gamma : {float type such as 0 <= gamma <= 1} default 1
@@ -1755,9 +1774,9 @@ class Learning(BaseEstimator):
         self.set_params(features_index=features_index)
         self.set_params(features_name=features_name)
         
-        if hasattr(self, 'length') is False:
-            length = len(features_name)
-            self.set_params(length=length)
+        if hasattr(self, 'k_max') is False:
+            k_max = len(features_name)
+            self.set_params(k_max=k_max)
         
         # Turn the matrix X in a discret matrix
         X_discretized = self.discretize(X)
@@ -1782,9 +1801,9 @@ class Learning(BaseEstimator):
         then selects the best subset by minimization
         of the empirical risk
         """
-        length = self.get_param('length')
-        assert length > 0, \
-            'length must be strictly superior to 0'
+        k_max = self.get_param('k_max')
+        assert k_max > 0, \
+            'k_max must be strictly superior to 0'
         
         selected_rs = self.get_param('selected_rs')
         
@@ -1795,17 +1814,17 @@ class Learning(BaseEstimator):
         ruleset = self.get_param('ruleset')
         
         if len(ruleset) > 0:
-            for l in range(2, length + 1):
-                print('Design for length %s' % str(l))
-                if len(selected_rs.extract_length(l)) == 0:
+            for k in range(2, k_max + 1):
+                print('Design for length %s' % str(k))
+                if len(selected_rs.extract_length(k)) == 0:
                     # seeking a set of rules with a length l
-                    ruleset_length_up = self.calc_length_c(l)
+                    ruleset_length_up = self.calc_length_c(k)
                     
                     if len(ruleset_length_up) > 0:
                         ruleset += ruleset_length_up
                         self.set_params(ruleset=ruleset)
                     else:
-                        print('No rules for length %s' % str(l))
+                        print('No rules for length %s' % str(k))
                         break
                     
                     ruleset.sort_by('crit', False)
@@ -1902,11 +1921,10 @@ class Learning(BaseEstimator):
             X = self.get_param('X')
         else:
             X = None
-            
-        rs1 = select_candidates(ruleset.extract_length(length=1),
-                                k, X, nb_jobs)
-        rs2 = select_candidates(ruleset.extract_length(length=length - 1),
-                                k, X, nb_jobs)
+
+        rs1, rs2 = ruleset.get_candidates(X, k, length, nb_jobs)
+        self.set_params(ruleset=ruleset)
+        
         if len(rs2) > 0:
             inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
                 delayed(calc_intersection)(rule, rs1, cov_min, cov_max,
