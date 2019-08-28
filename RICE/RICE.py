@@ -328,14 +328,16 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
 
 
 def find_cluster(ruleset, X, k, n_jobs):
-    prediction_matrix = np.array([rule.get_param('pred') *
-                                  rule.get_activation(X)
-                                  for rule in ruleset])
-    
-    cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
-    cluster_algo.fit(prediction_matrix)
-    return cluster_algo.labels_
-    
+    if len(ruleset) > k:
+        prediction_matrix = np.array([rule.get_param('pred') *
+                                      rule.get_activation(X)
+                                      for rule in ruleset])
+        
+        cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
+        cluster_algo.fit(prediction_matrix)
+        return cluster_algo.labels_
+    else:
+        return range(len(ruleset))
     
 def select_candidates(ruleset, k):
     """
@@ -1593,22 +1595,28 @@ class RuleSet(object):
         return f
     
     """------   Getters   -----"""
-    def get_candidates(self, X, k, length, nb_jobs):
+    def get_candidates(self, X, k, length, method, nb_jobs):
         candidates = []
         for l in [1, length-1]:
             rs_length_l = self.extract_length(l)
-            if all(map(lambda rule: hasattr(rule, 'cluster'),
-                       rs_length_l)) is False:
-                clusters = find_cluster(rs_length_l,
-                                        X, k, nb_jobs)
-                self.set_rules_cluster(clusters, l)
+            if method == 'cluter':
+                if all(map(lambda rule: hasattr(rule, 'cluster'),
+                           rs_length_l)) is False:
+                    clusters = find_cluster(rs_length_l,
+                                            X, k, nb_jobs)
+                    self.set_rules_cluster(clusters, l)
+                    
+                rules_list = []
+                for i in range(k):
+                    sub_rs = rs_length_l.extract('cluster', i)
+                    if len(sub_rs) > 0:
+                        sub_rs.sort_by('var', True)
+                        rules_list.append(sub_rs[0])
+                        
+            elif method == 'best':
+                rs_length_l.sort_by('crit', True)
+                rules_list = rs_length_l[:k]
                 
-            rules_list = []
-            for i in range(k):
-                sub_rs = rs_length_l.extract('cluster', i)
-                if len(sub_rs) > 0:
-                    sub_rs.sort_by('var', True)
-                    rules_list.append(sub_rs[0])
             candidates.append(RuleSet(rules_list))
             
         return candidates[0], candidates[1]
@@ -1688,6 +1696,7 @@ class Learning(BaseEstimator):
         self.critlist = []
         self.low_memory = False
         self.k = 500
+        self.method = 'best'
         
         for arg, val in parameters.items():
             setattr(self, arg, val)
@@ -1738,7 +1747,7 @@ class Learning(BaseEstimator):
         
         if hasattr(self, 'epsilon') is False:
             beta = self.get_param('beta')
-            epsilon = beta * np.std(y)
+            epsilon = beta**2 * np.std(y)
             self.set_params(epsilon=epsilon)
             
         if hasattr(self, 'covmin') is False:
@@ -1851,7 +1860,7 @@ class Learning(BaseEstimator):
         features_name = self.get_param('features_name')
         features_index = self.get_param('features_index')
         X = self.get_param('X')
-        method = self.get_param('calcmethod')
+        calcmethod = self.get_param('calcmethod')
         y = self.get_param('y')
         cov_max = self.get_param('covmax')
         cov_min = self.get_param('covmin')
@@ -1860,12 +1869,12 @@ class Learning(BaseEstimator):
         jobs = min(len(features_name), self.get_param('nb_jobs'))
         
         if jobs == 1:
-            ruleset = list(map(lambda var, idx: make_rules(var, idx, X, y, method,
+            ruleset = list(map(lambda var, idx: make_rules(var, idx, X, y, calcmethod,
                                                            cov_min, cov_max, low_memory),
                                features_name, features_index))
         else:
             ruleset = Parallel(n_jobs=jobs, backend="multiprocessing")(
-                delayed(make_rules)(var, idx, X, y, method, cov_min, cov_max, low_memory)
+                delayed(make_rules)(var, idx, X, y, calcmethod, cov_min, cov_max, low_memory)
                 for var, idx in zip(features_name, features_index))
         
         ruleset = functools.reduce(operator.add, ruleset)
@@ -1881,7 +1890,7 @@ class Learning(BaseEstimator):
         """
         nb_jobs = self.get_param('nb_jobs')
         X = self.get_param('X')
-        method = self.get_param('calcmethod')
+        calcmethod = self.get_param('calcmethod')
         y = self.get_param('y')
         cov_max = self.get_param('covmax')
         cov_min = self.get_param('covmin')
@@ -1891,11 +1900,11 @@ class Learning(BaseEstimator):
         
         if len(rules_list) > 0:
             if nb_jobs == 1:
-                rs = [eval_rule(rule, X, y, method, cov_min, cov_max, low_memory)
+                rs = [eval_rule(rule, X, y, calcmethod, cov_min, cov_max, low_memory)
                       for rule in rules_list]
             else:
                 rs = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                    delayed(eval_rule)(rule, X, y, method, cov_min, cov_max, low_memory)
+                    delayed(eval_rule)(rule, X, y, calcmethod, cov_min, cov_max, low_memory)
                     for rule in rules_list)
             
             rs = list(filter(None, rs))
@@ -1916,13 +1925,14 @@ class Learning(BaseEstimator):
         cov_max = self.get_param('covmax')
         k = self.get_param('k')
         nb_jobs = self.get_param('nb_jobs')
+        method = self.get_param('method')
         low_memory = self.get_param('low_memory')
         if low_memory:
             X = self.get_param('X')
         else:
             X = None
 
-        rs1, rs2 = ruleset.get_candidates(X, k, length, nb_jobs)
+        rs1, rs2 = ruleset.get_candidates(X, k, length, method, nb_jobs)
         self.set_params(ruleset=ruleset)
         
         if len(rs2) > 0:
@@ -2028,7 +2038,7 @@ class Learning(BaseEstimator):
 
     def select(self, rs, selected_rs=None):
         y_train = self.get_param('y')
-        method = self.get_param('calcmethod')
+        calcmethod = self.get_param('calcmethod')
         gamma = self.get_param('gamma')
         crit_evo = self.get_param('critlist')
         low_memory = self.get_param('low_memory')
@@ -2045,7 +2055,7 @@ class Learning(BaseEstimator):
             i = 0
             rg_add = 0
             
-        old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, method)
+        old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
         crit_evo.append(old_criterion)
         nb_rules = len(rs)
         
@@ -2062,7 +2072,7 @@ class Learning(BaseEstimator):
                                          gamma, x_train):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
-                new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, method)
+                new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, calcmethod)
             
                 selected_rs = copy.deepcopy(new_rs)
                 old_criterion = new_criterion
