@@ -338,7 +338,8 @@ def find_cluster(ruleset, X, k, n_jobs):
         return cluster_algo.labels_
     else:
         return range(len(ruleset))
-    
+
+
 def select_candidates(ruleset, k):
     """
     Returns a set of candidates to increase length
@@ -1616,7 +1617,11 @@ class RuleSet(object):
             elif method == 'best':
                 rs_length_l.sort_by('crit', True)
                 rules_list = rs_length_l[:k]
-                
+
+            else:
+                print('Choose a method among [cluster, best] to select candidat')
+                rules_list = rs_length_l.rules
+
             candidates.append(RuleSet(rules_list))
             
         return candidates[0], candidates[1]
@@ -1708,10 +1713,7 @@ class Learning(BaseEstimator):
             self.nb_jobs = -2
         
         if hasattr(self, 'gamma') is False:
-            self.gamma = 1.0
-    
-    def __repr__(self):
-        return self.__str__()
+            self.gamma = 0.95
     
     def __str__(self):
         learning = 'Learning'
