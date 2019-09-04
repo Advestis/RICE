@@ -328,13 +328,16 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
 
 
 def find_cluster(ruleset, X, k, n_jobs):
-    prediction_matrix = np.array([rule.get_param('pred') *
-                                  rule.get_activation(X)
-                                  for rule in ruleset])
-    
-    cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
-    cluster_algo.fit(prediction_matrix)
-    return cluster_algo.labels_
+    if len(ruleset) > k:
+        prediction_matrix = np.array([rule.get_param('pred') *
+                                      rule.get_activation(X)
+                                      for rule in ruleset])
+
+        cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
+        cluster_algo.fit(prediction_matrix)
+        return cluster_algo.labels_
+    else:
+        return range(len(ruleset))
     
     
 def select_candidates(ruleset, k):
