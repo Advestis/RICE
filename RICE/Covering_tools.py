@@ -179,19 +179,19 @@ def get_norule(rs, X, y):
     
     Parameters
     ----------
-    rs : {RuleSet type}
+    rs: {RuleSet type}
          A set of rules
          
-    X : {array-like or discretized matrix, shape = [n, d]}
+    X: {array-like or discretized matrix, shape = [n, d]}
         The training input samples after discretization.
 
-    y : {array-like, shape = [n]}
+    y: {array-like, shape = [n]}
     
         The normalized target values (real numbers).
         
     Return
     ------
-    neg_rule, pos_rule : {tuple type}
+    neg_rule, pos_rule: {tuple type}
                          Two rules or None
     """
     no_rule_act = 1 - rs.calc_activation()
@@ -273,7 +273,7 @@ def add_insignificant_rules(rules_list, rs, epsilon, sigma2, gamma):
     else:
         selected_rs = RICE.RuleSet([])
     
-    # print('Number of rules :', len(selected_rs))
+    # print('Number of rules:', len(selected_rs))
     # print('Coverage rate of the selected RuleSet ', selected_rs.calc_coverage())
     
     return selected_rs
@@ -341,12 +341,12 @@ def make_condition(rule):
     on a given feature.
     Parameters
     ----------
-    rule : {rule type}
+    rule: {rule type}
            A rule
 
     Return
     ------
-    conditions_str : {str type}
+    conditions_str: {str type}
                      A new string for the condition of the rule
     """
     conditions = rule.get_param('conditions').get_attr()
@@ -375,7 +375,7 @@ def make_selected_df(rs):
     """
     Returns
     -------
-    selected_df : {DataFrame type}
+    selected_df: {DataFrame type}
                   DataFrame of selected RuleSet for presentation
     """
     df = rs.to_df()
@@ -428,29 +428,36 @@ def change_rs(rs, bins, xmax, xmin):
                 
 def plot_rules(selected_rs, ymax, ymin,
                xmax, xmin, var1, var2,
-               cm=plt.cm.RdBu, cp=None,
-               bins=None):
+               cm=plt.cm.RdBu, cp=None):
     """
     Plot the rectangle activation zone of rules in a 2D plot
     the color is corresponding to the intensity of the prediction
-
     Parameters
     ----------
-    var1 : {string type}
+    selected_rs: {RuleSet type}
+                  The set of selcted rules
+    ymax: {float or int type}
+          The maximal value of the variable Y
+    
+    ymin: {float or int type}
+          The minimal value of the variable Y
+
+    xmax: {tuple or list type of length 2}
+          The 2 maximal values of var1 and var2
+
+    xmin: {tuple or list type of length 2}
+          The 2 minimal values of var1 and var2
+
+    var1: {string type}
            Name of the first variable
 
-    var2 : {string type}
+    var2: {string type}
            Name of the second variable
-
-    cp : {int type}, optional
+    cm: {}
+    cp: {int type}, optional
          Option to plot only the cp1 or cp2 rules
 
-    col_pos : {string type}, optional,
-              Name of the color of the zone of positive rules
-
-    col_neg : {string type}, optional
-              Name of the color of the zone of negative rules
-
+    Returns
     -------
     Draw the graphic
     """

@@ -377,7 +377,7 @@ def add_no_rule(rs, X, y):
     neg_rule, pos_rule : {tuple type}
                          Two rules or None
     """
-    no_rule_act = 1 - rs.calc_activation()
+    no_rule_act = 1 - rs.calc_activation(X)
     neg_rule = None
     pos_rule = None
     if sum(no_rule_act) > 0:
@@ -1259,6 +1259,7 @@ class Rule(object):
             if x is not None:
                 return self.conditions.transform(x)
             else:
+                print('No activation vector for %s' % str(self))
                 return None
     
     def get_predictions_vector(self, x=None):
@@ -1974,19 +1975,19 @@ class Learning(BaseEstimator):
         print('Number rules: %s' % str(len(sub_ruleset)))
         sub_ruleset = RuleSet(list(filter(lambda rule: rule.get_param('out') is False,
                                           sub_ruleset)))
-        
+        print('Number rules after  condition on the coverage rate test: %s'
+              % str(len(sub_ruleset)))
+
         if hasattr(self, 'sigma'):
             sigma = self.get_param('sigma')
         else:
             sigma = min(sub_ruleset.get_rules_param('var'))
             self.set_params(sigma=sigma)
-            
-        print('Number rules after  condition on the coverage rate test: %s'
-              % str(len(sub_ruleset)))
+
         filter_rs = filter(lambda rule: significant_test(rule, ymean,
                                                          sigma, beta), sub_ruleset)
         significant_ruleset = RuleSet(list(filter_rs))
-        print('Number rules after significant test: %s' % str(len(sub_ruleset)))
+        print('Number rules after significant test: %s' % str(len(significant_ruleset)))
 
         if len(significant_ruleset) > 0:
             # significant_ruleset.sort_by('cov', True)
@@ -1995,8 +1996,8 @@ class Learning(BaseEstimator):
             print('Number rules significant selected rules: %s' % str(rg_add))
 
         else:
-            selected_rs = RuleSet([])
-            print('No rules selected!')
+            selected_rs = None
+            print('No rules significant selected!')
 
         # Add insignificant rules
         if selected_rs.calc_coverage(x_train) < 1:
