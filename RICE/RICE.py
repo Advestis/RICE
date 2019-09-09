@@ -2007,7 +2007,7 @@ class Learning(BaseEstimator):
             print('Number rules after insignificant test: %s'
                   % str(len(insignificant_ruleset)))
 
-            insignificant_ruleset.sort_by('cov', True)
+            insignificant_ruleset.sort_by('var', True)
             rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
             print('Number insignificant rules added : %s' % str(rg_add))
 
