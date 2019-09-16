@@ -555,7 +555,34 @@ def mae_function(prediction_vector, y):
     return criterion
 
 
-def calc_criterion(prediction_vector, y, method='mse_function'):
+def aae_function(prediction_vector, y):
+    """
+    Compute the mean squared error
+    "$ \\dfrac{1}{n} \\Sigma_{i=1}^{n} (\\hat{y}_i - y_i)$"
+
+    Parameters
+    ----------
+    prediction_vector : {array type}
+                A predictor vector. It means a sparse array with two
+                different values ymean, if the rule is not active
+                and the prediction is the rule is active.
+
+    y : {array type}
+        The real target values (real numbers)
+
+    Return
+    ------
+    criterion : {float type}
+           the mean squared error
+    """
+    assert len(prediction_vector) == len(y), \
+        'The two array must have the same length'
+    error_vector = np.mean(np.abs(prediction_vector - y))
+    median_error = np.mean(np.abs(y - np.median(y)))
+    return error_vector / median_error
+
+
+def calc_criterion(prediction_vector, y, method='mse'):
     """
     Compute the criteria
 
@@ -579,12 +606,15 @@ def calc_criterion(prediction_vector, y, method='mse_function'):
     """
     y_fillna = np.nan_to_num(y)
     
-    if method == 'mse_function':
+    if method == 'mse':
         criterion = mse_function(prediction_vector, y_fillna)
     
-    elif method == 'mae_function':
+    elif method == 'mae':
         criterion = mae_function(prediction_vector, y_fillna)
     
+    elif method == 'aae':
+        criterion = aae_function(prediction_vector, y_fillna)
+        
     else:
         raise 'Method %s unknown' % method
     
@@ -1084,7 +1114,7 @@ class Rule(object):
 
         return new_rule
     
-    def calc_stats(self, x, y, method='mse_function',
+    def calc_stats(self, x, y, method='mse',
                    cov_min=0.01, cov_max=0.5, low_memory=False):
         """
         Calculation of all statistics of an rules
@@ -1098,7 +1128,7 @@ class Rule(object):
             The normalized target values (real numbers).
 
         method : {string type}
-                 The method mse_function or mse_function criterion
+                 The method mse_function or msecriterion
 
         cov_min : {float type such as 0 <= covmin <= 1}, default 0.5
                   The minimal coverage of one rule
@@ -1703,18 +1733,12 @@ class Learning(BaseEstimator):
         self.low_memory = False
         self.k = 500
         self.method = 'best'
+        self.alpha = 1. / 2 - 1. / 100
+        self.gamma = 0.95
+        self.nb_jobs = -2
         
         for arg, val in parameters.items():
             setattr(self, arg, val)
-        
-        if hasattr(self, 'alpha') is False:
-            self.alpha = 1. / 2 - 1. / 100
-        
-        if hasattr(self, 'nb_jobs') is False:
-            self.nb_jobs = -2
-        
-        if hasattr(self, 'gamma') is False:
-            self.gamma = 0.95
     
     def __str__(self):
         learning = 'Learning'
@@ -1750,7 +1774,7 @@ class Learning(BaseEstimator):
         
         if hasattr(self, 'epsilon') is False:
             beta = self.get_param('beta')
-            epsilon = beta**2 * np.std(y)
+            epsilon = beta * np.std(y)
             self.set_params(epsilon=epsilon)
             
         if hasattr(self, 'covmin') is False:
@@ -1766,17 +1790,15 @@ class Learning(BaseEstimator):
         
         if hasattr(self, 'covmax') is False:
             covmax = 1.0
-            #     1.0 / np.log(np.sqrt(self.get_param('nb_bucket')))
-            # covmax = min(0.99, covmax)
             self.set_params(covmax=covmax)
 
         if hasattr(self, 'calcmethod') is False:
             if len(set(y)) > 2:
                 # Binary classification case
-                calcmethod = 'mse_function'
+                calcmethod = 'mse'
             else:
                 # Regression case
-                calcmethod = 'mae_function'
+                calcmethod = 'mae'
             self.set_params(calcmethod=calcmethod)
         
         features_index = range(X.shape[1])
@@ -1819,15 +1841,15 @@ class Learning(BaseEstimator):
         
         selected_rs = self.get_param('selected_rs')
         
-        # -----------
-        # DESIGN PART
-        # -----------
+        # --------------
+        # DESIGNING PART
+        # --------------
         self.calc_length_1()
         ruleset = self.get_param('ruleset')
         
         if len(ruleset) > 0:
             for k in range(2, k_max + 1):
-                print('Design for length %s' % str(k))
+                print('Designing of rules of length %s' % str(k))
                 if len(selected_rs.extract_length(k)) == 0:
                     # seeking a set of rules with a length l
                     ruleset_length_up = self.calc_length_c(k)
@@ -1836,7 +1858,7 @@ class Learning(BaseEstimator):
                         ruleset += ruleset_length_up
                         self.set_params(ruleset=ruleset)
                     else:
-                        print('No rules for length %s' % str(k))
+                        print('No rule for length %s' % str(k))
                         break
                     
                     ruleset.sort_by('crit', False)
@@ -1854,7 +1876,7 @@ class Learning(BaseEstimator):
             self.set_params(selected_rs=selected_rs)
         
         else:
-            print('No rules found !')
+            print('No rule found !')
     
     def calc_length_1(self):
         """
@@ -1972,11 +1994,7 @@ class Learning(BaseEstimator):
         else:
             sub_ruleset = copy.deepcopy(ruleset)
 
-        print('Number rules: %s' % str(len(sub_ruleset)))
-        sub_ruleset = RuleSet(list(filter(lambda rule: rule.get_param('out') is False,
-                                          sub_ruleset)))
-        print('Number rules after  condition on the coverage rate test: %s'
-              % str(len(sub_ruleset)))
+        print('Number of rules: %s' % str(len(sub_ruleset)))
 
         if hasattr(self, 'sigma'):
             sigma = self.get_param('sigma')
@@ -1984,35 +2002,39 @@ class Learning(BaseEstimator):
             sigma = min(sub_ruleset.get_rules_param('var'))
             self.set_params(sigma=sigma)
 
-        filter_rs = filter(lambda rule: significant_test(rule, ymean,
-                                                         sigma, beta), sub_ruleset)
-        significant_ruleset = RuleSet(list(filter_rs))
-        print('Number rules after significant test: %s' % str(len(significant_ruleset)))
+        significant_list = filter(lambda rule: significant_test(rule, ymean,
+                                                                sigma, beta), sub_ruleset)
+        significant_ruleset = RuleSet(list(significant_list))
+        print('Number of rules after significant test: %s' % str(len(significant_ruleset)))
 
         if len(significant_ruleset) > 0:
             # significant_ruleset.sort_by('cov', True)
             significant_ruleset.sort_by('crit', False)
             rg_add, selected_rs = self.select(significant_ruleset)
-            print('Number rules significant selected rules: %s' % str(rg_add))
+            print('Number of selected significant rules: %s' % str(rg_add))
 
         else:
             selected_rs = None
             print('No rules significant selected!')
 
         # Add insignificant rules
-        if selected_rs.calc_coverage(x_train) < 1:
-            filter_rs = filter(lambda rule: insignificant_test(rule, sigma,
-                                                               epsilon), sub_ruleset)
-            insignificant_ruleset = RuleSet(list(filter_rs))
+        if selected_rs is None or selected_rs.calc_coverage(x_train) < 1:
+            insignificant_list = filter(lambda rule: insignificant_test(rule, sigma,
+                                                                        epsilon), sub_ruleset)
+            if len(list(significant_list)) > 0:
+                insignificant_list = filter(lambda rule: rule not in significant_list,
+                                            insignificant_list)
+            
+            insignificant_ruleset = RuleSet(list(insignificant_list))
             print('Number rules after insignificant test: %s'
                   % str(len(insignificant_ruleset)))
 
             insignificant_ruleset.sort_by('var', True)
             rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
-            print('Number insignificant rules added : %s' % str(rg_add))
+            print('Number insignificant rules added: %s' % str(rg_add))
 
         else:
-            print('Covering completed. No insignificant rule added')
+            print('Covering is completed. No insignificant rule added.')
             
         # Add rule to have a covering
         if selected_rs.calc_coverage(x_train) < 1:
@@ -2040,10 +2062,10 @@ class Learning(BaseEstimator):
         return selected_rs
 
     def select(self, rs, selected_rs=None):
-        y_train = self.get_param('y')
-        calcmethod = self.get_param('calcmethod')
+        # y_train = self.get_param('y')
+        # calcmethod = self.get_param('calcmethod')
         gamma = self.get_param('gamma')
-        crit_evo = self.get_param('critlist')
+        # crit_evo = self.get_param('critlist')
         low_memory = self.get_param('low_memory')
         if low_memory:
             x_train = self.get_param('X')
@@ -2058,8 +2080,8 @@ class Learning(BaseEstimator):
             i = 0
             rg_add = 0
             
-        old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
-        crit_evo.append(old_criterion)
+        # old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
+        # crit_evo.append(old_criterion)
         nb_rules = len(rs)
         
         while selected_rs.calc_coverage(x_train) < 1 and i < nb_rules:
@@ -2075,16 +2097,16 @@ class Learning(BaseEstimator):
                                          gamma, x_train):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
-                new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, calcmethod)
+                # new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, calcmethod)
             
                 selected_rs = copy.deepcopy(new_rs)
-                old_criterion = new_criterion
+                # old_criterion = new_criterion
                 rg_add += 1
                 
-            crit_evo.append(old_criterion)
+            # crit_evo.append(old_criterion)
             i += 1
     
-        self.set_params(critlist=crit_evo)
+        # self.set_params(critlist=crit_evo)
         return rg_add, selected_rs
 
     def predict(self, X, check_input=True):

@@ -1,5 +1,4 @@
 import numpy as np
-import tqdm
 import copy
 import math
 from operator import itemgetter
