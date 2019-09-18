@@ -243,61 +243,61 @@ def calc_intersection(rule, ruleset, cov_min,
     return rules_list
 
 
-def union_test(ruleset, rule, j, gamma, X=None):
-    """
-    Test to add a new rule (rule) to a set of rule
-    (ruleset)
-
-    Parameters
-    ----------
-    ruleset : {ruleset type}
-             An rule object
-
-    rule : {rule type}
-             A set of rule of length 1
-
-    j : {int type or None}
-        If j is not not we drop the j-th rule of ruleset
-        to try to add the new rule
-
-    gamma : {float type, 0 <= gamma <= 1}
-                Maximal rate of intersection
-    
-    X : {array-like or discretized matrix, shape = [n, d] or None}
-        The training input samples after discretization.
-        
-    Return
-    ------
-    ruleset_copy : {ruleset type}
-                  A set of rules with a new rule if the
-                  the intersection test is satisfied
-
-    None : If the intersection test between the new rule
-           and the set of rule is not satisfied
-
-    """
-    ruleset_copy = copy.deepcopy(ruleset)
-    if j is not None:
-        ruleset_copy.pop(j)
-        if len(ruleset_copy) > 1:
-            for i in range(len(ruleset_copy)):
-                rules = ruleset_copy[i]
-                utest = rule.union_test(rules.get_activation(X), gamma)
-                if utest is False:
-                    return None
-        
-        if rule.union_test(ruleset_copy.calc_activation(X), gamma):
-            ruleset_copy.insert(j, rule)
-            return ruleset_copy
-        else:
-            return None
-    else:
-        if rule.union_test(ruleset_copy.calc_activation(X), gamma):
-            ruleset_copy.append(rule)
-            return ruleset_copy
-        else:
-            return None
-
+# def union_test(ruleset, rule, j, gamma, X=None):
+#     """
+#     Test to add a new rule (rule) to a set of rule
+#     (ruleset)
+#
+#     Parameters
+#     ----------
+#     ruleset : {ruleset type}
+#              An rule object
+#
+#     rule : {rule type}
+#              A set of rule of length 1
+#
+#     j : {int type or None}
+#         If j is not not we drop the j-th rule of ruleset
+#         to try to add the new rule
+#
+#     gamma : {float type, 0 <= gamma <= 1}
+#                 Maximal rate of intersection
+#
+#     X : {array-like or discretized matrix, shape = [n, d] or None}
+#         The training input samples after discretization.
+#
+#     Return
+#     ------
+#     ruleset_copy : {ruleset type}
+#                   A set of rules with a new rule if the
+#                   the intersection test is satisfied
+#
+#     None : If the intersection test between the new rule
+#            and the set of rule is not satisfied
+#
+#     """
+#     ruleset_copy = copy.deepcopy(ruleset)
+#     if j is not None:
+#         ruleset_copy.pop(j)
+#         if len(ruleset_copy) > 1:
+#             for i in range(len(ruleset_copy)):
+#                 rules = ruleset_copy[i]
+#                 utest = rule.union_test(rules.get_activation(X), gamma)
+#                 if utest is False:
+#                     return None
+#
+#         if rule.union_test(ruleset_copy.calc_activation(X), gamma):
+#             ruleset_copy.insert(j, rule)
+#             return ruleset_copy
+#         else:
+#             return None
+#     else:
+#         if rule.union_test(ruleset_copy.calc_activation(X), gamma):
+#             ruleset_copy.append(rule)
+#             return ruleset_copy
+#         else:
+#             return None
+#
 
 def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     """
@@ -329,8 +329,7 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
 
 def find_cluster(ruleset, X, k, n_jobs):
     if len(ruleset) > k:
-        prediction_matrix = np.array([rule.get_param('pred') *
-                                      rule.get_activation(X)
+        prediction_matrix = np.array([rule.get_param('pred') * rule.get_activation(X)
                                       for rule in ruleset])
         
         cluster_algo = KMeans(n_clusters=k, n_jobs=n_jobs)
@@ -1530,7 +1529,7 @@ class RuleSet(object):
         activation_vector = [rule.get_activation(x) for rule in self]
         activation_vector = np.sum(activation_vector, axis=0)
         activation_vector = 1 * activation_vector.astype('bool')
-        
+
         return activation_vector
     
     def calc_coverage(self, x=None):
@@ -1629,7 +1628,7 @@ class RuleSet(object):
     """------   Getters   -----"""
     def get_candidates(self, X, k, length, method, nb_jobs):
         candidates = []
-        for l in [1, length-1]:
+        for l in [1, length - 1]:
             rs_length_l = self.extract_length(l)
             if method == 'cluter':
                 if all(map(lambda rule: hasattr(rule, 'cluster'),
@@ -1646,7 +1645,7 @@ class RuleSet(object):
                         rules_list.append(sub_rs[0])
                         
             elif method == 'best':
-                rs_length_l.sort_by('crit', True)
+                rs_length_l.sort_by('crit', False)
                 rules_list = rs_length_l[:k]
 
             else:
@@ -1695,7 +1694,7 @@ class RuleSet(object):
         
         self.rules = rules_list
         
-            
+        
 class Learning(BaseEstimator):
     """
     ...
@@ -1899,7 +1898,8 @@ class Learning(BaseEstimator):
                                features_name, features_index))
         else:
             ruleset = Parallel(n_jobs=jobs, backend="multiprocessing")(
-                delayed(make_rules)(var, idx, X, y, calcmethod, cov_min, cov_max, low_memory)
+                delayed(make_rules)(var, idx, X, y, calcmethod,
+                                    cov_min, cov_max, low_memory)
                 for var, idx in zip(features_name, features_index))
         
         ruleset = functools.reduce(operator.add, ruleset)
@@ -1929,7 +1929,8 @@ class Learning(BaseEstimator):
                       for rule in rules_list]
             else:
                 rs = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
-                    delayed(eval_rule)(rule, X, y, calcmethod, cov_min, cov_max, low_memory)
+                    delayed(eval_rule)(rule, X, y, calcmethod,
+                                       cov_min, cov_max, low_memory)
                     for rule in rules_list)
             
             rs = list(filter(None, rs))
@@ -2003,24 +2004,27 @@ class Learning(BaseEstimator):
             self.set_params(sigma=sigma)
 
         significant_list = filter(lambda rule: significant_test(rule, ymean,
-                                                                sigma, beta), sub_ruleset)
+                                                                sigma, beta),
+                                  sub_ruleset)
         significant_ruleset = RuleSet(list(significant_list))
-        print('Number of rules after significant test: %s' % str(len(significant_ruleset)))
+        print('Number of rules after significant test: %s'
+              % str(len(significant_ruleset)))
 
         if len(significant_ruleset) > 0:
-            # significant_ruleset.sort_by('cov', True)
-            significant_ruleset.sort_by('crit', False)
+            significant_ruleset.sort_by('cov', True)
+            # significant_ruleset.sort_by('crit', False)
             rg_add, selected_rs = self.select(significant_ruleset)
             print('Number of selected significant rules: %s' % str(rg_add))
 
         else:
             selected_rs = None
-            print('No rules significant selected!')
+            print('No significant rules selected!')
 
         # Add insignificant rules
         if selected_rs is None or selected_rs.calc_coverage(x_train) < 1:
             insignificant_list = filter(lambda rule: insignificant_test(rule, sigma,
-                                                                        epsilon), sub_ruleset)
+                                                                        epsilon),
+                                        sub_ruleset)
             if len(list(significant_list)) > 0:
                 insignificant_list = filter(lambda rule: rule not in significant_list,
                                             insignificant_list)
@@ -2029,7 +2033,7 @@ class Learning(BaseEstimator):
             print('Number rules after insignificant test: %s'
                   % str(len(insignificant_ruleset)))
 
-            insignificant_ruleset.sort_by('var', True)
+            insignificant_ruleset.sort_by('var', False)
             rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
             print('Number insignificant rules added: %s' % str(rg_add))
 
@@ -2064,8 +2068,8 @@ class Learning(BaseEstimator):
     def select(self, rs, selected_rs=None):
         # y_train = self.get_param('y')
         # calcmethod = self.get_param('calcmethod')
-        gamma = self.get_param('gamma')
         # crit_evo = self.get_param('critlist')
+        gamma = self.get_param('gamma')
         low_memory = self.get_param('low_memory')
         if low_memory:
             x_train = self.get_param('X')
@@ -2079,27 +2083,35 @@ class Learning(BaseEstimator):
         else:
             i = 0
             rg_add = 0
-            
         # old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
         # crit_evo.append(old_criterion)
         nb_rules = len(rs)
-        
-        while selected_rs.calc_coverage(x_train) < 1 and i < nb_rules:
+
+        activation_rs = selected_rs.calc_activation(x_train)
+        if low_memory:
+            [r.set_params(activation=r.get_activation(x_train)) for r in selected_rs]
+        else:
+            pass
+            
+        while calc_coverage(activation_rs) < 1 and i < nb_rules:
             rs_copy = copy.deepcopy(selected_rs)
             new_rules = rs[i]
-        
+            if low_memory:
+                new_rules.set_params(activation=new_rules.get_activation(x_train))
+            else:
+                pass
             union_tests = [new_rules.union_test(rule.get_activation(x_train),
                                                 gamma, x_train)
                            for rule in rs_copy]
         
             if all(union_tests) and \
-                    new_rules.union_test(selected_rs.calc_activation(x_train),
-                                         gamma, x_train):
+                    new_rules.union_test(activation_rs, gamma, x_train):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
                 # new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, calcmethod)
             
                 selected_rs = copy.deepcopy(new_rs)
+                activation_rs = selected_rs.calc_activation(x_train)
                 # old_criterion = new_criterion
                 rg_add += 1
                 
