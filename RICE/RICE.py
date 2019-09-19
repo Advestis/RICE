@@ -354,102 +354,102 @@ def select_candidates(ruleset, k):
     return RuleSet(rules_list)
 
     
-def add_no_rule(rs, X, y):
-    """
-    Return the two smallest rule of l1 that cover all none covered
-    positive and negative points
+# def add_no_rule(rs, X, y):
+#     """
+#     Return the two smallest rule of l1 that cover all none covered
+#     positive and negative points
+#
+#     Parameters
+#     ----------
+#     rs : {RuleSet type}
+#          A set of rules
+#
+#     X : {array-like or discretized matrix, shape = [n, d]}
+#         The training input samples after discretization.
+#
+#     y : {array-like, shape = [n]}
+#
+#         The normalized target values (real numbers).
+#
+#     Return
+#     ------
+#     neg_rule, pos_rule : {tuple type}
+#                          Two rules or None
+#     """
+#     no_rule_act = 1 - rs.calc_activation(X)
+#     neg_rule = None
+#     pos_rule = None
+#     if sum(no_rule_act) > 0:
+#
+#         neg_rule_list, pos_rule_list = get_norules_list(no_rule_act, X, y)
+#
+#         if len(neg_rule_list) > 0:
+#             neg_rule = neg_rule_list[0]
+#             for rg in neg_rule_list[1:]:
+#                 conditions_list = neg_rule.intersect_conditions(rg)
+#                 new_conditions = RuleConditions(features_name=conditions_list[0],
+#                                                 features_index=conditions_list[1],
+#                                                 bmin=conditions_list[2],
+#                                                 bmax=conditions_list[3],
+#                                                 xmax=conditions_list[5],
+#                                                 xmin=conditions_list[4])
+#                 neg_rule = Rule(new_conditions)
+#
+#         if len(pos_rule_list) > 0:
+#             pos_rule = pos_rule_list[0]
+#             for rg in pos_rule_list[1:]:
+#                 conditions_list = pos_rule.intersect_conditions(rg)
+#                 new_conditions = RuleConditions(features_name=conditions_list[0],
+#                                                 features_index=conditions_list[1],
+#                                                 bmin=conditions_list[2],
+#                                                 bmax=conditions_list[3],
+#                                                 xmax=conditions_list[5],
+#                                                 xmin=conditions_list[4])
+#                 pos_rule = Rule(new_conditions)
+#
+#     return neg_rule, pos_rule
     
-    Parameters
-    ----------
-    rs : {RuleSet type}
-         A set of rules
-         
-    X : {array-like or discretized matrix, shape = [n, d]}
-        The training input samples after discretization.
 
-    y : {array-like, shape = [n]}
-    
-        The normalized target values (real numbers).
-        
-    Return
-    ------
-    neg_rule, pos_rule : {tuple type}
-                         Two rules or None
-    """
-    no_rule_act = 1 - rs.calc_activation(X)
-    neg_rule = None
-    pos_rule = None
-    if sum(no_rule_act) > 0:
-    
-        neg_rule_list, pos_rule_list = get_norules_list(no_rule_act, X, y)
-
-        if len(neg_rule_list) > 0:
-            neg_rule = neg_rule_list[0]
-            for rg in neg_rule_list[1:]:
-                conditions_list = neg_rule.intersect_conditions(rg)
-                new_conditions = RuleConditions(features_name=conditions_list[0],
-                                                features_index=conditions_list[1],
-                                                bmin=conditions_list[2],
-                                                bmax=conditions_list[3],
-                                                xmax=conditions_list[5],
-                                                xmin=conditions_list[4])
-                neg_rule = Rule(new_conditions)
-
-        if len(pos_rule_list) > 0:
-            pos_rule = pos_rule_list[0]
-            for rg in pos_rule_list[1:]:
-                conditions_list = pos_rule.intersect_conditions(rg)
-                new_conditions = RuleConditions(features_name=conditions_list[0],
-                                                features_index=conditions_list[1],
-                                                bmin=conditions_list[2],
-                                                bmax=conditions_list[3],
-                                                xmax=conditions_list[5],
-                                                xmin=conditions_list[4])
-                pos_rule = Rule(new_conditions)
-
-    return neg_rule, pos_rule
-    
-
-def get_norules_list(no_rule_act, X, y):
-    neg_rule_list = []
-    pos_rule_list = []
-    
-    for i in range(X.shape[1]):
-        try:
-            sub_x = X[:, i].astype('float')
-        except ValueError:
-            sub_x = None
-        
-        if sub_x is not None:
-            sub_no_rule_act = no_rule_act[~np.isnan(sub_x)]
-            sub_y = y[~np.isnan(sub_x)]
-            sub_x = sub_x[~np.isnan(sub_x)]
-            
-            no_rule_act_pos = np.array(sub_y * sub_no_rule_act > 0)
-            no_rule_act_neg = np.array(sub_y * sub_no_rule_act < 0)
-            
-            if sum(no_rule_act_neg) > 0:
-                x_neg = np.extract(no_rule_act_neg, sub_x)
-                neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
-                                                  bmax=[x_neg.max()],
-                                                  features_name=[''],
-                                                  features_index=[i],
-                                                  xmax=[sub_x.max()],
-                                                  xmin=[sub_x.min()]))
-                neg_rule_list.append(neg_no_rule)
-            
-            if sum(no_rule_act_pos) > 0:
-                x_pos = np.extract(no_rule_act_pos, sub_x)
-                pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
-                                                  bmax=[x_pos.max()],
-                                                  features_name=[''],
-                                                  features_index=[i],
-                                                  xmax=[sub_x.max()],
-                                                  xmin=[sub_x.min()]))
-                
-                pos_rule_list.append(pos_no_rule)
-    
-    return neg_rule_list, pos_rule_list
+# def get_norules_list(no_rule_act, X, y):
+#     neg_rule_list = []
+#     pos_rule_list = []
+#
+#     for i in range(X.shape[1]):
+#         try:
+#             sub_x = X[:, i].astype('float')
+#         except ValueError:
+#             sub_x = None
+#
+#         if sub_x is not None:
+#             sub_no_rule_act = no_rule_act[~np.isnan(sub_x)]
+#             sub_y = y[~np.isnan(sub_x)]
+#             sub_x = sub_x[~np.isnan(sub_x)]
+#
+#             no_rule_act_pos = np.array(sub_y * sub_no_rule_act > 0)
+#             no_rule_act_neg = np.array(sub_y * sub_no_rule_act < 0)
+#
+#             if sum(no_rule_act_neg) > 0:
+#                 x_neg = np.extract(no_rule_act_neg, sub_x)
+#                 neg_no_rule = Rule(RuleConditions(bmin=[x_neg.min()],
+#                                                   bmax=[x_neg.max()],
+#                                                   features_name=[''],
+#                                                   features_index=[i],
+#                                                   xmax=[sub_x.max()],
+#                                                   xmin=[sub_x.min()]))
+#                 neg_rule_list.append(neg_no_rule)
+#
+#             if sum(no_rule_act_pos) > 0:
+#                 x_pos = np.extract(no_rule_act_pos, sub_x)
+#                 pos_no_rule = Rule(RuleConditions(bmin=[x_pos.min()],
+#                                                   bmax=[x_pos.max()],
+#                                                   features_name=[''],
+#                                                   features_index=[i],
+#                                                   xmax=[sub_x.max()],
+#                                                   xmin=[sub_x.min()]))
+#
+#                 pos_rule_list.append(pos_no_rule)
+#
+#     return neg_rule_list, pos_rule_list
 
 
 def get_variables_count(ruleset):
@@ -907,7 +907,8 @@ class RuleConditions(object):
             x_col = X[:, col_index]
             
             # Turn x_col to array
-            x_col = np.squeeze(np.asarray(x_col))
+            if len(x_col) > 1:
+                x_col = np.squeeze(np.asarray(x_col))
             
             if type(self.bmin[i]) == str:
                 x_col = np.array(x_col, dtype=np.str)
@@ -1500,21 +1501,30 @@ class RuleSet(object):
         nb_rules_active = prediction_matrix.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
         
-        # Activation of the intersection of all activated rules at each row
-        dot_activation = np.dot(prediction_matrix, activation_matrix)
-        # Activation vectors for intersection of activated rules
-        dot_activation = np.array([np.equal(act, nb_rules) for act, nb_rules in
-                                   zip(dot_activation, nb_rules_active)],
-                                  dtype='int')
-        
         # Activation of the intersection of all NOT activated rules at each row
         no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
         no_activation_vector = np.array(no_activation_vector,
                                         dtype='int')
         
-        # Calculation of the binary vector for cells of the partition et each row
-        cells = ((dot_activation - no_activation_vector) > 0)
+        # Activation of the intersection of all activated rules at each row
+        dot_activation = np.dot(prediction_matrix, activation_matrix)
         
+        id_bad_cells = list(range(len(x_test)))
+        cells = np.zeros((len(x_test), len(y_train)))
+        accu = 0
+        
+        while len(id_bad_cells) > 0 and accu < np.min(nb_rules_active):
+            print('Accu : %s' % str(accu))
+            # Activation vectors for intersection of activated rules
+            dot_activation = np.array([np.greater_equal(act, nb_rules - accu) for act, nb_rules in
+                                       zip(dot_activation, nb_rules_active)], dtype='int')
+
+            # Calculation of the binary vector for cells of the partition et each row
+            cells[id_bad_cells, :] = ((dot_activation - no_activation_vector) > 0)[id_bad_cells, :]
+
+            id_bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
+            accu += 1
+            
         # Calculation of the conditional expectation in each cell
         prediction_vector = [calc_prediction(act, y_train) for act in cells]
         
@@ -1730,7 +1740,7 @@ class Learning(BaseEstimator):
         self.bins = dict()
         self.critlist = []
         self.low_memory = False
-        self.k = 500
+        self.k = 150
         self.method = 'best'
         self.alpha = 1. / 2 - 1. / 100
         self.gamma = 0.95
@@ -2042,26 +2052,28 @@ class Learning(BaseEstimator):
             
         # Add rule to have a covering
         if selected_rs.calc_coverage(x_train) < 1:
-            neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
-            features_name = self.get_param('features_name')
+            print('Warning: Covering is not completed!')
             
-            if neg_rule is not None:
-                id_feature = neg_rule.conditions.get_param('features_index')
-                rule_features = list(itemgetter(*id_feature)(features_name))
-                neg_rule.conditions.set_params(features_name=rule_features)
-                neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
-                print('Add negative no-rule  %s.' % str(neg_rule))
-                selected_rs.append(neg_rule)
-                
-            if pos_rule is not None:
-                id_feature = pos_rule.conditions.get_param('features_index')
-                rule_features = list(itemgetter(*id_feature)(features_name))
-                pos_rule.conditions.set_params(features_name=rule_features)
-                pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
-                print('Add positive no-rule  %s.' % str(pos_rule))
-                selected_rs.append(pos_rule)
+            # neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
+            # features_name = self.get_param('features_name')
+            #
+            # if neg_rule is not None:
+            #     id_feature = neg_rule.conditions.get_param('features_index')
+            #     rule_features = list(itemgetter(*id_feature)(features_name))
+            #     neg_rule.conditions.set_params(features_name=rule_features)
+            #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
+            #     print('Add negative no-rule  %s.' % str(neg_rule))
+            #     selected_rs.append(neg_rule)
+            #
+            # if pos_rule is not None:
+            #     id_feature = pos_rule.conditions.get_param('features_index')
+            #     rule_features = list(itemgetter(*id_feature)(features_name))
+            #     pos_rule.conditions.set_params(features_name=rule_features)
+            #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
+            #     print('Add positive no-rule  %s.' % str(pos_rule))
+            #     selected_rs.append(pos_rule)
         else:
-            print('No no-rule added.')
+            print('Covering is completed.')
             
         return selected_rs
 
@@ -2069,7 +2081,6 @@ class Learning(BaseEstimator):
         # y_train = self.get_param('y')
         # calcmethod = self.get_param('calcmethod')
         # crit_evo = self.get_param('critlist')
-        gamma = self.get_param('gamma')
         low_memory = self.get_param('low_memory')
         if low_memory:
             x_train = self.get_param('X')
@@ -2078,9 +2089,11 @@ class Learning(BaseEstimator):
         
         if selected_rs is None:
             selected_rs = RuleSet(rs[:1])
+            gamma = self.get_param('gamma')
             i = 1
             rg_add = 1
         else:
+            gamma = 1.0
             i = 0
             rg_add = 0
         # old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
