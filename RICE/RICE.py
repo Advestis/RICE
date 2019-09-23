@@ -1513,9 +1513,10 @@ class RuleSet(object):
         cells = np.zeros((len(x_test), len(y_train)))
         accu = 0
         
-        while len(id_bad_cells) > 0 and accu < np.min(nb_rules_active):
+        while len(id_bad_cells) > 0 and accu < np.min(nb_rules_active[id_bad_cells]):
             print('Accu : %s' % str(accu))
             # Activation vectors for intersection of activated rules
+            dot_activation = np.dot(prediction_matrix, activation_matrix)
             dot_activation = np.array([np.greater_equal(act, nb_rules - accu) for act, nb_rules in
                                        zip(dot_activation, nb_rules_active)], dtype='int')
 
