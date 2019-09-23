@@ -1513,7 +1513,7 @@ class RuleSet(object):
         cells = np.zeros((len(x_test), len(y_train)))
         accu = 0
         
-        while len(id_bad_cells) > 0 and accu < np.min(nb_rules_active[id_bad_cells]):
+        while len(id_bad_cells) > 0 and accu <= np.min(nb_rules_active[id_bad_cells]):
             print('Accu : %s' % str(accu))
             # Activation vectors for intersection of activated rules
             dot_activation = np.dot(prediction_matrix, activation_matrix)
@@ -1528,9 +1528,11 @@ class RuleSet(object):
             
         # Calculation of the conditional expectation in each cell
         prediction_vector = [calc_prediction(act, y_train) for act in cells]
-        
         prediction_vector = np.array(prediction_vector)
-        
+
+        # Replace prediction 0 by the mean of Y on the training set
+        prediction_vector[prediction_vector == 0] = np.mean(y_train)
+
         return prediction_vector
     
     def calc_activation(self, x=None):
@@ -1723,7 +1725,7 @@ class Learning(BaseEstimator):
                     and d the number of features
                     Choose the number a bucket for the discretization
 
-        k_max : {int type} default d
+        l_max : {int type} default d
                  Choose the maximal length of one rule
         
         gamma : {float type such as 0 <= gamma <= 1} default 1
@@ -1818,9 +1820,9 @@ class Learning(BaseEstimator):
         self.set_params(features_index=features_index)
         self.set_params(features_name=features_name)
         
-        if hasattr(self, 'k_max') is False:
-            k_max = len(features_name)
-            self.set_params(k_max=k_max)
+        if hasattr(self, 'l_max') is False:
+            l_max = len(features_name)
+            self.set_params(l_max=l_max)
         
         # Turn the matrix X in a discret matrix
         X_discretized = self.discretize(X)
@@ -1845,9 +1847,9 @@ class Learning(BaseEstimator):
         then selects the best subset by minimization
         of the empirical risk
         """
-        k_max = self.get_param('k_max')
-        assert k_max > 0, \
-            'k_max must be strictly superior to 0'
+        l_max = self.get_param('l_max')
+        assert l_max > 0, \
+            'l_max must be strictly superior to 0'
         
         selected_rs = self.get_param('selected_rs')
         
@@ -1858,7 +1860,7 @@ class Learning(BaseEstimator):
         ruleset = self.get_param('ruleset')
         
         if len(ruleset) > 0:
-            for k in range(2, k_max + 1):
+            for k in range(2, l_max + 1):
                 print('Designing of rules of length %s' % str(k))
                 if len(selected_rs.extract_length(k)) == 0:
                     # seeking a set of rules with a length l
