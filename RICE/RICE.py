@@ -1500,30 +1500,38 @@ class RuleSet(object):
         
         nb_rules_active = prediction_matrix.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
-        
+
+        if np.min(nb_rules_active) == -1:
+            print('Error with the new observation:', list(nb_rules_active).index(-1))
+            print('No activated rule!')
+
         # Activation of the intersection of all NOT activated rules at each row
         no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
         no_activation_vector = np.array(no_activation_vector,
                                         dtype='int')
         
         # Activation of the intersection of all activated rules at each row
-        dot_activation = np.dot(prediction_matrix, activation_matrix)
-        
+
         id_bad_cells = list(range(len(x_test)))
         cells = np.zeros((len(x_test), len(y_train)))
         accu = 0
         
-        while len(id_bad_cells) > 0 and accu <= np.min(nb_rules_active[id_bad_cells]):
+        while len(id_bad_cells) > 0 and accu <= np.max(nb_rules_active[id_bad_cells]):
             print('Accu : %s' % str(accu))
             # Activation vectors for intersection of activated rules
             dot_activation = np.dot(prediction_matrix, activation_matrix)
-            dot_activation = np.array([np.greater_equal(act, nb_rules - accu) for act, nb_rules in
+            dot_activation = np.array([np.greater_equal(act, max(0, nb_rules - accu)) for act, nb_rules in
                                        zip(dot_activation, nb_rules_active)], dtype='int')
 
             # Calculation of the binary vector for cells of the partition et each row
             cells[id_bad_cells, :] = ((dot_activation - no_activation_vector) > 0)[id_bad_cells, :]
 
             id_bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
+            if accu == 0:
+                print('Warning!')
+                print('Uncovered zone by the training sample:', id_bad_cells)
+                bad_cells = id_bad_cells
+
             accu += 1
             
         # Calculation of the conditional expectation in each cell
@@ -1531,9 +1539,9 @@ class RuleSet(object):
         prediction_vector = np.array(prediction_vector)
 
         # Replace prediction 0 by the mean of Y on the training set
-        prediction_vector[prediction_vector == 0] = np.mean(y_train)
+        # prediction_vector[prediction_vector == 0] = np.mean(y_train)
 
-        return prediction_vector
+        return prediction_vector, bad_cells
     
     def calc_activation(self, x=None):
         """
@@ -1560,8 +1568,8 @@ class RuleSet(object):
         """
         Computes the prediction vector for a given X and a given aggregation method
         """
-        prediction_vector = self.calc_pred(y_train, x_train, x_test)
-        return prediction_vector
+        prediction_vector, bad_cells = self.calc_pred(y_train, x_train, x_test)
+        return prediction_vector, bad_cells
     
     def make_rule_names(self):
         """
@@ -2166,10 +2174,10 @@ class Learning(BaseEstimator):
         ruleset = self.get_param('selected_rs')
         ymean = self.get_param('ymean')
         
-        prediction_vector = ruleset.predict(y_train, x_train, x_copy)
+        prediction_vector, bad_cells = ruleset.predict(y_train, x_train, x_copy)
         prediction_vector = list(map(lambda p: ymean if p != p else p, prediction_vector))
         
-        return np.array(prediction_vector)
+        return np.array(prediction_vector), bad_cells
     
     def score(self, x, y, sample_weight=None):
         """
