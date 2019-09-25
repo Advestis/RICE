@@ -1512,12 +1512,12 @@ class RuleSet(object):
                                         dtype='int')
 
         dot_activation = np.dot(prediction_matrix, activation_matrix)
-        dot_activation = np.array([np.greater_equal(act, nb_rules) for act, nb_rules in
+        dot_activation = np.array([np.equal(act, nb_rules) for act, nb_rules in
                                    zip(dot_activation, nb_rules_active)], dtype='int')
 
         # Calculation of the binary vector for cells of the partition et each row
         cells = ((dot_activation - no_activation_vector) > 0)
-        bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
+        bad_cells = np.where(np.sum(cells, axis=1) == 0)[0]
 
         # # Activation of the intersection of all activated rules at each row
         # id_bad_cells = list(range(len(x_test)))
