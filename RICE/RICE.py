@@ -1283,14 +1283,14 @@ class Rule(object):
         To get the activation vector of self.
         If it does not exist the function return None
         """
-        if hasattr(self, 'activation'):
-            return self.get_param('activation')
+        if x is not None:
+            return self.conditions.transform(x)
         else:
-            if x is not None:
-                return self.conditions.transform(x)
+            if hasattr(self, 'activation'):
+                return self.get_param('activation')
             else:
                 print('No activation vector for %s' % str(self))
-                return None
+            return None
     
     def get_predictions_vector(self, x=None):
         """
@@ -1501,45 +1501,55 @@ class RuleSet(object):
         nb_rules_active = prediction_matrix.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
 
-        if np.min(nb_rules_active) == -1:
-            print('Error with the new observation:', list(nb_rules_active).index(-1))
+        bad_x = list(filter(lambda c: c == -1, nb_rules_active))
+        if len(bad_x) > 0:
+            print('Error with %s new observations:' % str(len(bad_x)))
             print('No activated rule!')
 
         # Activation of the intersection of all NOT activated rules at each row
         no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
         no_activation_vector = np.array(no_activation_vector,
                                         dtype='int')
-        
-        # Activation of the intersection of all activated rules at each row
 
-        id_bad_cells = list(range(len(x_test)))
-        cells = np.zeros((len(x_test), len(y_train)))
-        accu = 0
-        
-        while len(id_bad_cells) > 0 and accu <= np.max(nb_rules_active[id_bad_cells]):
-            print('Accu : %s' % str(accu))
-            # Activation vectors for intersection of activated rules
-            dot_activation = np.dot(prediction_matrix, activation_matrix)
-            dot_activation = np.array([np.greater_equal(act, max(0, nb_rules - accu)) for act, nb_rules in
-                                       zip(dot_activation, nb_rules_active)], dtype='int')
+        dot_activation = np.dot(prediction_matrix, activation_matrix)
+        dot_activation = np.array([np.greater_equal(act, nb_rules) for act, nb_rules in
+                                   zip(dot_activation, nb_rules_active)], dtype='int')
 
-            # Calculation of the binary vector for cells of the partition et each row
-            cells[id_bad_cells, :] = ((dot_activation - no_activation_vector) > 0)[id_bad_cells, :]
+        # Calculation of the binary vector for cells of the partition et each row
+        cells = ((dot_activation - no_activation_vector) > 0)
+        bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
 
-            id_bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
-            if accu == 0:
-                print('Warning!')
-                print('Uncovered zone by the training sample:', id_bad_cells)
-                bad_cells = id_bad_cells
-
-            accu += 1
+        # # Activation of the intersection of all activated rules at each row
+        # id_bad_cells = list(range(len(x_test)))
+        # cells = np.zeros((len(x_test), len(y_train)))
+        # accu = 0
+        #
+        # while len(id_bad_cells) > 0 and accu <= np.max(nb_rules_active[id_bad_cells]):
+        #     print('Accu : %s' % str(accu))
+        #     # Activation vectors for intersection of activated rules
+        #     dot_activation = np.dot(prediction_matrix, activation_matrix)
+        #     dot_activation = np.array([np.greater_equal(act, max(0, nb_rules - accu)) for act, nb_rules in
+        #                                zip(dot_activation, nb_rules_active)], dtype='int')
+        #
+        #     # Calculation of the binary vector for cells of the partition et each row
+        #     cells[id_bad_cells, :] = ((dot_activation - no_activation_vector) > 0)[id_bad_cells, :]
+        #
+        #     id_bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
+        #     if accu == 0:
+        #         print('Warning!')
+        #         print('Uncovered zone by the training sample:', id_bad_cells)
+        #         bad_cells = id_bad_cells
+        #
+        #     accu += 1
             
         # Calculation of the conditional expectation in each cell
         prediction_vector = [calc_prediction(act, y_train) for act in cells]
         prediction_vector = np.array(prediction_vector)
 
-        # Replace prediction 0 by the mean of Y on the training set
-        # prediction_vector[prediction_vector == 0] = np.mean(y_train)
+        no_act = 1 - self.calc_activation(x_train)
+        no_pred = np.mean(np.extract(y_train, no_act))
+        # Replace prediction 0 by the mean of Y on the no activated rule
+        prediction_vector[prediction_vector == 0] = no_pred
 
         return prediction_vector, bad_cells
     
@@ -1597,7 +1607,7 @@ class RuleSet(object):
         
         return selected_df
     
-    def plot_counter_variables(self):
+    def plot_counter_variables(self, nb_max=None):
         counter = get_variables_count(self)
     
         x_labels = list(map(lambda item: item[0], counter))
@@ -1605,7 +1615,11 @@ class RuleSet(object):
     
         f = plt.figure()
         ax = plt.subplot()
-    
+
+        if nb_max is not None:
+            x_labels = x_labels[:nb_max]
+            values = values[:nb_max]
+
         g = sns.barplot(y=x_labels, x=values, ax=ax, ci=None)
         g.set(xlim=(0, max(values) + 1), ylabel='Variable', xlabel='Count')
     
@@ -1756,7 +1770,8 @@ class Learning(BaseEstimator):
         self.alpha = 1. / 2 - 1. / 100
         self.gamma = 0.95
         self.nb_jobs = -2
-        
+        self.coverage = False
+
         for arg, val in parameters.items():
             setattr(self, arg, val)
     
@@ -2041,50 +2056,51 @@ class Learning(BaseEstimator):
             selected_rs = None
             print('No significant rules selected!')
 
-        # Add insignificant rules
-        if selected_rs is None or selected_rs.calc_coverage(x_train) < 1:
-            insignificant_list = filter(lambda rule: insignificant_test(rule, sigma,
-                                                                        epsilon),
-                                        sub_ruleset)
-            if len(list(significant_list)) > 0:
-                insignificant_list = filter(lambda rule: rule not in significant_list,
-                                            insignificant_list)
-            
-            insignificant_ruleset = RuleSet(list(insignificant_list))
-            print('Number rules after insignificant test: %s'
-                  % str(len(insignificant_ruleset)))
+        if self.coverage:
+            # Add insignificant rules
+            if selected_rs is None or selected_rs.calc_coverage(x_train) < 1:
+                insignificant_list = filter(lambda rule: insignificant_test(rule, sigma,
+                                                                            epsilon),
+                                            sub_ruleset)
+                if len(list(significant_list)) > 0:
+                    insignificant_list = filter(lambda rule: rule not in significant_list,
+                                                insignificant_list)
 
-            insignificant_ruleset.sort_by('var', False)
-            rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
-            print('Number insignificant rules added: %s' % str(rg_add))
+                insignificant_ruleset = RuleSet(list(insignificant_list))
+                print('Number rules after insignificant test: %s'
+                      % str(len(insignificant_ruleset)))
 
-        else:
-            print('Covering is completed. No insignificant rule added.')
-            
-        # Add rule to have a covering
-        if selected_rs.calc_coverage(x_train) < 1:
-            print('Warning: Covering is not completed!')
-            
-            # neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
-            # features_name = self.get_param('features_name')
-            #
-            # if neg_rule is not None:
-            #     id_feature = neg_rule.conditions.get_param('features_index')
-            #     rule_features = list(itemgetter(*id_feature)(features_name))
-            #     neg_rule.conditions.set_params(features_name=rule_features)
-            #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
-            #     print('Add negative no-rule  %s.' % str(neg_rule))
-            #     selected_rs.append(neg_rule)
-            #
-            # if pos_rule is not None:
-            #     id_feature = pos_rule.conditions.get_param('features_index')
-            #     rule_features = list(itemgetter(*id_feature)(features_name))
-            #     pos_rule.conditions.set_params(features_name=rule_features)
-            #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
-            #     print('Add positive no-rule  %s.' % str(pos_rule))
-            #     selected_rs.append(pos_rule)
-        else:
-            print('Covering is completed.')
+                insignificant_ruleset.sort_by('var', False)
+                rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
+                print('Number insignificant rules added: %s' % str(rg_add))
+
+            else:
+                print('Covering is completed. No insignificant rule added.')
+
+            # Add rule to have a covering
+            if selected_rs.calc_coverage(x_train) < 1:
+                print('Warning: Covering is not completed!')
+
+                # neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
+                # features_name = self.get_param('features_name')
+                #
+                # if neg_rule is not None:
+                #     id_feature = neg_rule.conditions.get_param('features_index')
+                #     rule_features = list(itemgetter(*id_feature)(features_name))
+                #     neg_rule.conditions.set_params(features_name=rule_features)
+                #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
+                #     print('Add negative no-rule  %s.' % str(neg_rule))
+                #     selected_rs.append(neg_rule)
+                #
+                # if pos_rule is not None:
+                #     id_feature = pos_rule.conditions.get_param('features_index')
+                #     rule_features = list(itemgetter(*id_feature)(features_name))
+                #     pos_rule.conditions.set_params(features_name=rule_features)
+                #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
+                #     print('Add positive no-rule  %s.' % str(pos_rule))
+                #     selected_rs.append(pos_rule)
+            else:
+                print('Covering is completed.')
             
         return selected_rs
 
