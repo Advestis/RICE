@@ -2120,7 +2120,8 @@ class Learning(BaseEstimator):
             i = 1
             rg_add = 1
         else:
-            gamma = 1.0
+            gamma = self.get_param('gamma')
+            # gamma = 1.0
             i = 0
             rg_add = 0
         # old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
