@@ -241,6 +241,7 @@ def get_significant(rules_list, ymean, beta, gamma, sigma2):
     filtered_rules = filter(lambda rule: beta * abs(ymean - rule.pred) >=
                                          math.sqrt(max(0, rule.var - sigma2)), rules_list)
     significant_rules = list(filtered_rules)
+    [rule.set_params(significant=True) for rule in significant_rules]
     
     # print('Nb of significant rules', len(significant_rules))
     significant_rs = RICE.RuleSet(significant_rules)
@@ -264,6 +265,7 @@ def add_insignificant_rules(rules_list, rs, epsilon, sigma2, gamma):
     # print('Nb of insignificant rules', len(insignificant_rule))
     insignificant_rs = RICE.RuleSet(insignificant_rule)
     # print('Coverage rate of significant rule:', insignificant_rs.calc_coverage())
+    [rule.set_params(significant=False) for rule in insignificant_rs]
     
     if len(insignificant_rs) > 0:
         insignificant_rs.sort_by(crit='var', maximized=False)
@@ -322,7 +324,8 @@ def find_covering(rules_list, X, y, sigma2=None,
                                               epsilon, sigma2, gamma)
         
         if selected_rs.calc_coverage() < 1.0:
-            new_rs = add_norule(selected_rs, y, X, features)
+            new_rs = extend_bounds(selected_rs, X, y, np.mean(y),
+                                   sigma2, beta, epsilon)
         else:
             # print('No norule added')
             new_rs = copy.copy(selected_rs)
@@ -334,6 +337,194 @@ def find_covering(rules_list, X, y, sigma2=None,
     return significant_selected_rs, selected_rs, new_rs
 
 
+def extend_bounds(rs, X, y, ymean, sigma2, beta, epsilon):
+    def dist(l, u, x):
+        if x < l:
+            return l - x
+        elif x > u:
+            return x - u
+        else:
+            return 0
+    
+    def calc_dist(rule, x):
+        aa = rule.conditions.features_index
+        bmin = rule.conditions.bmin
+        bmax = rule.conditions.bmax
+        return [dist(l, u, z) for l, u, z in zip(bmin, bmax, x[aa])]
+
+    no_act = 1 - rs.calc_activation(X)
+    ids = np.where(no_act == 1)[0]
+    temp = [[calc_dist(rule, x) for rule in rs] for x in X[ids, :]]
+    temp2 = [[sum(t) for t in temp[i]] for i in range(len(temp))]
+
+    t = np.zeros(len(temp[0]))
+    for i in range(len(temp)):
+        t += temp2[i]
+    t = list(t)
+
+    id_rule = t.index(min(t))
+    tt = [temp[i][id_rule] for i in range(len(temp))]
+    val_change = list(map(max, (zip(*tt))))
+
+    new_rule = copy.deepcopy(rs[id_rule])
+    old_bmin = new_rule.conditions.bmin
+    old_bmax = new_rule.conditions.bmax
+    bmin = []
+    bmax = []
+
+    j = 0
+    for i in new_rule.conditions.features_index:
+        if val_change[j] == 0:
+            bmin.append(old_bmin[j])
+            bmax.append(old_bmax[j])
+        else:
+            sub_x = X[ids, i]
+            x_max = max(sub_x)
+            x_min = min(sub_x)
+        
+            if x_min < old_bmin[j]:
+                if x_max <= old_bmax[j]:
+                    bmin.append(old_bmin[j] - val_change[j])
+                    bmax.append(old_bmax[j])
+                elif x_min - old_bmin[j] > old_bmax[j] - x_max:
+                    bmin.append(old_bmin[j] - val_change[j])
+                    bmax.append(old_bmax[j])
+                else:
+                    bmax.append(old_bmax[j] + val_change[j])
+                    bmin.append(old_bmin[j])
+            else:
+                bmax.append(old_bmax[j] + val_change[j])
+                bmin.append(old_bmin[j])
+        j += 1
+
+    new_rule.conditions.bmin = bmin
+    new_rule.conditions.bmax = bmax
+    
+    new_rule.calc_stats(y=y, x=X, cov_min=0.0, cov_max=1.1)
+    
+    left_term = beta * abs(ymean - new_rule.pred)
+    right_term = math.sqrt(max(0, new_rule.var - sigma2))
+    significant = left_term > right_term
+    if significant:
+        new_rule.set_params(significant=True)
+    elif epsilon > right_term:
+        new_rule.set_params(significant=False)
+    else:
+        print('Add no-rule')
+        
+    new_rs = copy.deepcopy(rs)
+    new_rs.pop(id_rule)
+    new_rs.append(new_rule)
+    
+    return new_rs
+
+
+def calc_pred(ruleset, y_train, x_train=None, x_test=None):
+    """
+    Computes the prediction vector
+    using an rule based partition
+    """
+    ################ Significant Part ################
+    sub_rs = ruleset.extract('significant', True)
+    # Activation of all rules in the learning set
+    activation_matrix = np.array([rule.get_activation(x_train) for rule in sub_rs])
+
+    if x_test is None:
+        prediction_matrix = activation_matrix.T
+    else:
+        prediction_matrix = [rule.calc_activation(x_test) for rule in sub_rs]
+        prediction_matrix = np.array(prediction_matrix).T
+
+    no_activation_matrix = np.logical_not(prediction_matrix)
+
+    nb_rules_active = prediction_matrix.sum(axis=1)
+    nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
+
+    no_rules = np.where(nb_rules_active == -1)[0]
+    # no_rules = list(filter(lambda c: c == -1, nb_rules_active))
+    if len(no_rules) > 0:
+        print('Error with %s new observations:' % str(len(no_rules)))
+        print('No activated rule!')
+
+    # Activation of the intersection of all NOT activated rules at each row
+    no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
+    no_activation_vector = np.array(no_activation_vector,
+                                    dtype='int')
+
+    dot_activation = np.dot(prediction_matrix, activation_matrix)
+    dot_activation = np.array([np.equal(act, nb_rules) for act, nb_rules in
+                               zip(dot_activation, nb_rules_active)], dtype='int')
+
+    # Calculation of the binary vector for cells of the partition et each row
+    cells = ((dot_activation - no_activation_vector) > 0)
+    bad_cells = np.where(np.sum(cells, axis=1) == 0)[0]
+    bad_cells = list(filter(lambda i: i not in no_rules, bad_cells))
+    
+    ################ Insignificant Part ################
+    # Activation of all rules in the learning set
+    activation_matrix = np.array([rule.get_activation(x_train) for rule in ruleset])
+
+    if x_test is None:
+        prediction_matrix = activation_matrix.T
+    else:
+        prediction_matrix = [rule.calc_activation(x_test) for rule in ruleset]
+        prediction_matrix = np.array(prediction_matrix).T
+
+    no_activation_matrix = np.logical_not(prediction_matrix)
+
+    nb_rules_active = prediction_matrix.sum(axis=1)
+    nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
+
+    # Activation of the intersection of all NOT activated rules at each row
+    no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
+    no_activation_vector = np.array(no_activation_vector,
+                                    dtype='int')
+
+    dot_activation = np.dot(prediction_matrix, activation_matrix)
+    dot_activation = np.array([np.equal(act, nb_rules) for act, nb_rules in
+                               zip(dot_activation, nb_rules_active)], dtype='int')
+
+    # Calculation of the binary vector for cells of the partition et each row
+    cells[no_rules, :] = ((dot_activation - no_activation_vector) > 0)[no_rules, :]
+    bad_cells += list(np.where(np.sum(cells, axis=1) == 0)[0])
+    bad_cells = list(filter(lambda i: i not in no_rules, bad_cells))
+
+    # # Activation of the intersection of all activated rules at each row
+    # id_bad_cells = list(range(len(x_test)))
+    # cells = np.zeros((len(x_test), len(y_train)))
+    # accu = 0
+    #
+    # while len(id_bad_cells) > 0 and accu <= np.max(nb_rules_active[id_bad_cells]):
+    #     print('Accu : %s' % str(accu))
+    #     # Activation vectors for intersection of activated rules
+    #     dot_activation = np.dot(prediction_matrix, activation_matrix)
+    #     dot_activation = np.array([np.greater_equal(act, max(0, nb_rules - accu)) for act, nb_rules in
+    #                                zip(dot_activation, nb_rules_active)], dtype='int')
+    #
+    #     # Calculation of the binary vector for cells of the partition et each row
+    #     cells[id_bad_cells, :] = ((dot_activation - no_activation_vector) > 0)[id_bad_cells, :]
+    #
+    #     id_bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
+    #     if accu == 0:
+    #         print('Warning!')
+    #         print('Uncovered zone by the training sample:', id_bad_cells)
+    #         bad_cells = id_bad_cells
+    #
+    #     accu += 1
+
+    # Calculation of the conditional expectation in each cell
+    prediction_vector = [RICE.calc_prediction(act, y_train) for act in cells]
+    prediction_vector = np.array(prediction_vector)
+    
+    no_act = 1 - ruleset.calc_activation(x_train)
+    no_pred = np.mean(np.extract(y_train, no_act))
+    # Replace prediction 0 by the mean of Y on the no activated rule
+    prediction_vector[no_rules] = no_pred
+    # prediction_vector[prediction_vector == 0] = no_pred
+
+    return prediction_vector, bad_cells, no_rules
+    
+    
 def make_condition(rule):
     """
     Evaluate all suitable rules (i.e satisfying all criteria)

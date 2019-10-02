@@ -642,7 +642,7 @@ def significant_test(rule, ymean, sigma, beta):
     """
     left_term = beta * abs(rule.get_param('pred') - ymean)
     right_term = np.sqrt(max(0, rule.get_param('var') - sigma))
-    return left_term >= right_term
+    return left_term > right_term
 
 
 def insignificant_test(rule, sigma, epsilon):
@@ -1467,7 +1467,7 @@ class RuleSet(object):
         """
         if cols is None:
             cols = ['Features_Name', 'BMin', 'BMax',
-                    'Cov', 'Pred', 'Var', 'Crit']
+                    'Cov', 'Pred', 'Var', 'Crit', 'Significant']
         
         df = pd.DataFrame(index=self.get_rules_name(),
                           columns=cols)
@@ -1479,7 +1479,7 @@ class RuleSet(object):
             
             elif all([hasattr(rule.conditions, att_name.lower()) for rule in self]):
                 df[col_name] = [rule.conditions.get_param(att_name) for rule in self]
-        
+            
         return df
     
     def calc_pred(self, y_train, x_train=None, x_test=None):
@@ -1500,10 +1500,11 @@ class RuleSet(object):
         
         nb_rules_active = prediction_matrix.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
-
-        bad_x = list(filter(lambda c: c == -1, nb_rules_active))
-        if len(bad_x) > 0:
-            print('Error with %s new observations:' % str(len(bad_x)))
+        
+        no_rules = np.where(nb_rules_active == -1)[0]
+        # no_rules = list(filter(lambda c: c == -1, nb_rules_active))
+        if len(no_rules) > 0:
+            print('Error with %s new observations:' % str(len(no_rules)))
             print('No activated rule!')
 
         # Activation of the intersection of all NOT activated rules at each row
@@ -1518,7 +1519,8 @@ class RuleSet(object):
         # Calculation of the binary vector for cells of the partition et each row
         cells = ((dot_activation - no_activation_vector) > 0)
         bad_cells = np.where(np.sum(cells, axis=1) == 0)[0]
-
+        bad_cells = list(filter(lambda i: i not in no_rules, bad_cells))
+        
         # # Activation of the intersection of all activated rules at each row
         # id_bad_cells = list(range(len(x_test)))
         # cells = np.zeros((len(x_test), len(y_train)))
@@ -1549,9 +1551,10 @@ class RuleSet(object):
         no_act = 1 - self.calc_activation(x_train)
         no_pred = np.mean(np.extract(y_train, no_act))
         # Replace prediction 0 by the mean of Y on the no activated rule
-        prediction_vector[prediction_vector == 0] = no_pred
+        prediction_vector[no_rules] = no_pred
+        # prediction_vector[prediction_vector == 0] = no_pred
 
-        return prediction_vector, bad_cells
+        return prediction_vector, bad_cells, no_rules
     
     def calc_activation(self, x=None):
         """
@@ -1578,8 +1581,8 @@ class RuleSet(object):
         """
         Computes the prediction vector for a given X and a given aggregation method
         """
-        prediction_vector, bad_cells = self.calc_pred(y_train, x_train, x_test)
-        return prediction_vector, bad_cells
+        prediction_vector, bad_cells, no_rules = self.calc_pred(y_train, x_train, x_test)
+        return prediction_vector, bad_cells, no_rules
     
     def make_rule_names(self):
         """
@@ -2030,7 +2033,7 @@ class Learning(BaseEstimator):
             sub_ruleset = ruleset.extract_length(length)
         else:
             sub_ruleset = copy.deepcopy(ruleset)
-
+        
         print('Number of rules: %s' % str(len(sub_ruleset)))
 
         if hasattr(self, 'sigma'):
@@ -2039,10 +2042,11 @@ class Learning(BaseEstimator):
             sigma = min(sub_ruleset.get_rules_param('var'))
             self.set_params(sigma=sigma)
 
-        significant_list = filter(lambda rule: significant_test(rule, ymean,
+        significant_list = list(filter(lambda rule: significant_test(rule, ymean,
                                                                 sigma, beta),
-                                  sub_ruleset)
-        significant_ruleset = RuleSet(list(significant_list))
+                                  sub_ruleset))
+        [rule.set_params(significant=True) for rule in significant_list]
+        significant_ruleset = RuleSet(significant_list)
         print('Number of rules after significant test: %s'
               % str(len(significant_ruleset)))
 
@@ -2063,10 +2067,11 @@ class Learning(BaseEstimator):
                                                                             epsilon),
                                             sub_ruleset)
                 if len(list(significant_list)) > 0:
-                    insignificant_list = filter(lambda rule: rule not in significant_list,
-                                                insignificant_list)
+                    insignificant_list = list(filter(lambda rule: rule not in significant_list,
+                                                insignificant_list))
 
-                insignificant_ruleset = RuleSet(list(insignificant_list))
+                [rule.set_params(significant=False) for rule in insignificant_list]
+                insignificant_ruleset = RuleSet(insignificant_list)
                 print('Number rules after insignificant test: %s'
                       % str(len(insignificant_ruleset)))
 
@@ -2191,10 +2196,9 @@ class Learning(BaseEstimator):
         ruleset = self.get_param('selected_rs')
         ymean = self.get_param('ymean')
         
-        prediction_vector, bad_cells = ruleset.predict(y_train, x_train, x_copy)
-        prediction_vector = list(map(lambda p: ymean if p != p else p, prediction_vector))
+        prediction_vector, bad_cells, no_rules = ruleset.predict(y_train, x_train, x_copy)
         
-        return np.array(prediction_vector), bad_cells
+        return np.array(prediction_vector), bad_cells, no_rules
     
     def score(self, x, y, sample_weight=None):
         """
