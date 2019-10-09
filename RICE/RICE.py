@@ -7,7 +7,6 @@ import copy
 import operator
 import functools
 from collections import Counter
-from operator import itemgetter
 
 import numpy as np
 import pandas as pd
@@ -50,7 +49,7 @@ def make_condition(rule):
     for i in range(length):
         if i > 0:
             conditions_str += ' & '
-            
+        
         conditions_str += conditions[0][i]
         if conditions[2][i] == conditions[3][i]:
             conditions_str += ' = '
@@ -350,10 +349,10 @@ def select_candidates(ruleset, k):
         if len(sub_rs) > 0:
             sub_rs.sort_by('var', True)
             rules_list.append(sub_rs[0])
-        
+    
     return RuleSet(rules_list)
 
-    
+
 # def add_no_rule(rs, X, y):
 #     """
 #     Return the two smallest rule of l1 that cover all none covered
@@ -408,7 +407,7 @@ def select_candidates(ruleset, k):
 #                 pos_rule = Rule(new_conditions)
 #
 #     return neg_rule, pos_rule
-    
+
 
 # def get_norules_list(no_rule_act, X, y):
 #     neg_rule_list = []
@@ -613,7 +612,7 @@ def calc_criterion(prediction_vector, y, method='mse'):
     
     elif method == 'aae':
         criterion = aae_function(prediction_vector, y_fillna)
-        
+    
     else:
         raise 'Method %s unknown' % method
     
@@ -724,7 +723,7 @@ def calc_variance(activation_vector, y):
     # cond_var = 1. / cov * (np.mean(y_cond ** 2) - 1. / cov * np.mean(y_cond) ** 2)
     sub_y = np.extract(activation_vector, y)
     cond_var = np.var(sub_y)
-
+    
     return cond_var
 
 
@@ -820,22 +819,22 @@ class RuleConditions(object):
     def __init__(self, features_name, features_index,
                  bmin, bmax, xmin, xmax, values=None):
         
-        assert isinstance(features_name, (tuple, list, np.ndarray)),\
+        assert isinstance(features_name, (tuple, list, np.ndarray)), \
             'Type of parameter must be iterable tuple, list or array' % features_name
         self.features_name = features_name
         length = len(features_name)
         
-        assert isinstance(features_index, (tuple, list, np.ndarray)),\
+        assert isinstance(features_index, (tuple, list, np.ndarray)), \
             'Type of parameter must be iterable tuple, list or array' % features_name
         assert len(features_index) == length, \
             'Parameters must have the same length' % features_name
         self.features_index = features_index
         
-        assert isinstance(bmin, (tuple, list, np.ndarray)),\
+        assert isinstance(bmin, (tuple, list, np.ndarray)), \
             'Type of parameter must be iterable tuple, list or array' % features_name
         assert len(bmin) == length, \
             'Parameters must have the same length' % features_name
-        assert isinstance(bmax, (tuple, list, np.ndarray)),\
+        assert isinstance(bmax, (tuple, list, np.ndarray)), \
             'Type of parameter must be iterable tuple, list or array' % features_name
         assert len(bmax) == length, \
             'Parameters must have the same length' % features_name
@@ -846,11 +845,11 @@ class RuleConditions(object):
         self.bmin = bmin
         self.bmax = bmax
         
-        assert isinstance(xmax, (tuple, list, np.ndarray)),\
+        assert isinstance(xmax, (tuple, list, np.ndarray)), \
             'Type of parameter must be iterable tuple, list or array' % features_name
         assert len(xmax) == length, \
             'Parameters must have the same length' % features_name
-        assert isinstance(xmin, (tuple, list, np.ndarray)),\
+        assert isinstance(xmin, (tuple, list, np.ndarray)), \
             'Type of parameter must be iterable tuple, list or array' % features_name
         assert len(xmin) == length, \
             'Parameters must have the same length' % features_name
@@ -862,7 +861,7 @@ class RuleConditions(object):
         else:
             assert isinstance(values, (tuple, list, np.ndarray)), \
                 'Type of parameter must be iterable tuple, list or array' % features_name
-            
+        
         self.values = [values]
     
     def __repr__(self):
@@ -1017,7 +1016,7 @@ class Rule(object):
         
         intersection = np.logical_and(activation_self, activation_other)
         
-        if np.allclose(intersection, activation_self)\
+        if np.allclose(intersection, activation_self) \
                 or np.allclose(intersection, activation_other):
             return None
         else:
@@ -1084,7 +1083,7 @@ class Rule(object):
         conditions_2 = rule.conditions
         
         conditions = list(map(lambda c1, c2: c1 + c2, conditions_1.get_attr(),
-                          conditions_2.get_attr()))
+                              conditions_2.get_attr()))
         
         return conditions
     
@@ -1111,7 +1110,7 @@ class Rule(object):
                 new_rule = Rule(new_conditions)
                 if low_memory is False:
                     new_rule.set_params(activation=activation)
-
+        
         return new_rule
     
     def calc_stats(self, x, y, method='mse',
@@ -1145,34 +1144,34 @@ class Rule(object):
         """
         self.set_params(out=False)
         activation_vector = self.calc_activation(x=x)
-
+        
         if sum(activation_vector) > 0:
             if low_memory is False:
                 self.set_params(activation=activation_vector)
-
+            
             cov = calc_coverage(activation_vector)
             self.set_params(cov=cov)
-
+            
             if cov >= cov_max or cov <= cov_min:
                 self.set_params(out=True)
             else:
                 prediction = calc_prediction(activation_vector, y)
                 self.set_params(pred=prediction)
-
+                
                 cond_var = calc_variance(activation_vector, y)
                 self.set_params(var=cond_var)
-
+                
                 prediction_vector = activation_vector * prediction
                 complementary_prediction = calc_prediction(1 - activation_vector, y)
                 np.place(prediction_vector, prediction_vector == 0,
                          complementary_prediction)
-
+                
                 rez = calc_criterion(prediction_vector, y, method)
                 self.set_params(crit=rez)
-
+        
         else:
             self.set_params(out=True)
-
+    
     def calc_activation(self, x=None):
         """
         Compute the activation vector of an rule
@@ -1479,7 +1478,7 @@ class RuleSet(object):
             
             elif all([hasattr(rule.conditions, att_name.lower()) for rule in self]):
                 df[col_name] = [rule.conditions.get_param(att_name) for rule in self]
-            
+        
         return df
     
     def calc_pred(self, y_train, x_train=None, x_test=None):
@@ -1500,30 +1499,31 @@ class RuleSet(object):
         
         nb_rules_active = prediction_matrix.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
-
+        
         # Activation of the intersection of all NOT activated rules at each row
         no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
         no_activation_vector = np.array(no_activation_vector,
                                         dtype='int')
-
+        
         dot_activation = np.dot(prediction_matrix, activation_matrix)
         dot_activation = np.array([np.equal(act, nb_rules) for act, nb_rules in
                                    zip(dot_activation, nb_rules_active)], dtype='int')
-
+        
         # Calculation of the binary vector for cells of the partition et each row
         cells = ((dot_activation - no_activation_vector) > 0)
         
         # Calculation of the expectation of the complementary
         no_act = 1 - self.calc_activation(x_train)
         no_pred = np.mean(np.extract(y_train, no_act))
-    
+        
         # Get empty significant cells
-        significant_rules = np.where(np.array(self.get_rules_param('significant')) == True)[0]
+        significant_list = np.array(self.get_rules_param('significant'), dtype=int)
+        significant_rules = np.where(significant_list == 1)[0]
         temp = prediction_matrix[:, significant_rules]
         nb_rules_active = temp.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1
         empty_cells = np.where(nb_rules_active == -1)[0]
-
+        
         # Get empty insignificant cells
         bad_cells = np.where(np.sum(cells, axis=1) == 0)[0]
         bad_cells = list(filter(lambda i: i not in empty_cells, bad_cells))
@@ -1544,7 +1544,7 @@ class RuleSet(object):
         activation_vector = [rule.get_activation(x) for rule in self]
         activation_vector = np.sum(activation_vector, axis=0)
         activation_vector = 1 * activation_vector.astype('bool')
-
+        
         return activation_vector
     
     def calc_coverage(self, x=None):
@@ -1570,20 +1570,20 @@ class RuleSet(object):
         Add an attribute name at each rule of self
         """
         list(map(lambda rule, rules_id: rule.make_name(rules_id),
-             self, range(len(self))))
+                 self, range(len(self))))
     
     def make_selected_df(self):
         df = self.to_df()
-    
+        
         df.rename(columns={"Cov": "Coverage", "Pred": "Prediction",
                            'Var': 'Variance', 'Crit': 'Criterion'},
                   inplace=True)
-    
+        
         df['Conditions'] = [make_condition(rule) for rule in self]
         selected_df = df[['Conditions', 'Coverage',
                           'Prediction', 'Variance',
                           'Criterion']].copy()
-    
+        
         selected_df['Coverage'] = selected_df.Coverage.round(2)
         selected_df['Prediction'] = selected_df.Prediction.round(2)
         selected_df['Variance'] = selected_df.Variance.round(2)
@@ -1593,58 +1593,59 @@ class RuleSet(object):
     
     def plot_counter_variables(self, nb_max=None):
         counter = get_variables_count(self)
-    
+        
         x_labels = list(map(lambda item: item[0], counter))
         values = list(map(lambda item: item[1], counter))
-    
+        
         f = plt.figure()
         ax = plt.subplot()
-
+        
         if nb_max is not None:
             x_labels = x_labels[:nb_max]
             values = values[:nb_max]
-
+        
         g = sns.barplot(y=x_labels, x=values, ax=ax, ci=None)
         g.set(xlim=(0, max(values) + 1), ylabel='Variable', xlabel='Count')
-    
+        
         return f
     
     def plot_dist(self, x=None, metric=dist):
         rules_names = self.get_rules_name()
-    
+        
         predictions_vector_list = [rule.get_predictions_vector(x) for rule in self]
         predictions_matrix = np.array(predictions_vector_list)
-    
+        
         distance_vector = scipy_dist.pdist(predictions_matrix, metric=metric)
         distance_matrix = scipy_dist.squareform(distance_vector)
-    
+        
         # Set up the matplotlib figure
         f = plt.figure()
         ax = plt.subplot()
-    
+        
         # Generate a mask for the upper triangle
         mask = np.zeros_like(distance_matrix, dtype=np.bool)
         mask[np.triu_indices_from(mask)] = True
-    
+        
         # Generate a custom diverging colormap
         cmap = sns.diverging_palette(220, 10, as_cmap=True)
-    
+        
         vmax = np.max(distance_matrix)
         vmin = np.min(distance_matrix)
         # center = np.mean(distance_matrix)
-    
+        
         # Draw the heatmap with the mask and correct aspect ratio
         sns.heatmap(distance_matrix, cmap=cmap, ax=ax,
                     vmax=vmax, vmin=vmin, center=1.,
                     square=True, xticklabels=rules_names,
                     yticklabels=rules_names, mask=mask)
-    
+        
         plt.yticks(rotation=0)
         plt.xticks(rotation=90)
-    
+        
         return f
     
     """------   Getters   -----"""
+    
     def get_candidates(self, X, k, length, method, nb_jobs):
         candidates = []
         for l in [1, length - 1]:
@@ -1655,26 +1656,26 @@ class RuleSet(object):
                     clusters = find_cluster(rs_length_l,
                                             X, k, nb_jobs)
                     self.set_rules_cluster(clusters, l)
-                    
+                
                 rules_list = []
                 for i in range(k):
                     sub_rs = rs_length_l.extract('cluster', i)
                     if len(sub_rs) > 0:
                         sub_rs.sort_by('var', True)
                         rules_list.append(sub_rs[0])
-                        
+            
             elif method == 'best':
                 rs_length_l.sort_by('crit', False)
                 rules_list = rs_length_l[:k]
-
+            
             else:
                 print('Choose a method among [cluster, best] to select candidat')
                 rules_list = rs_length_l.rules
-
-            candidates.append(RuleSet(rules_list))
             
-        return candidates[0], candidates[1]
+            candidates.append(RuleSet(rules_list))
         
+        return candidates[0], candidates[1]
+    
     def get_rules_param(self, param):
         """
         To get the list of a parameter param of the rules in self
@@ -1698,6 +1699,7 @@ class RuleSet(object):
         return self.rules
     
     """------   Setters   -----"""
+    
     def set_rules(self, rules_list):
         """
         To set a list of rule in self
@@ -1712,8 +1714,8 @@ class RuleSet(object):
         rules_list += list(filter(lambda rule: rule.get_param('length') != length, self))
         
         self.rules = rules_list
-        
-        
+
+
 class Learning(BaseEstimator):
     """
     ...
@@ -1755,7 +1757,7 @@ class Learning(BaseEstimator):
         self.gamma = 0.95
         self.nb_jobs = -2
         self.coverage = True
-
+        
         for arg, val in parameters.items():
             setattr(self, arg, val)
     
@@ -1785,7 +1787,7 @@ class Learning(BaseEstimator):
         X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
         y = check_array(y, dtype=None, ensure_2d=False,
                         force_all_finite=False)  # type: np.ndarray
-
+        
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
             beta = 1. / pow(X.shape[0], 1. / 4 - self.alpha / 2.)
@@ -1795,11 +1797,11 @@ class Learning(BaseEstimator):
             beta = self.get_param('beta')
             epsilon = beta * np.std(y)
             self.set_params(epsilon=epsilon)
-            
+        
         if hasattr(self, 'covmin') is False:
             covmin = 1. / pow(X.shape[0], self.alpha)
             self.set_params(covmin=covmin)
-            
+        
         if hasattr(self, 'nb_bucket') is False:
             nb_bucket = max(10, int(np.sqrt(pow(X.shape[0],
                                                 1. / X.shape[1]))))
@@ -1810,7 +1812,7 @@ class Learning(BaseEstimator):
         if hasattr(self, 'covmax') is False:
             covmax = 1.0
             self.set_params(covmax=covmax)
-
+        
         if hasattr(self, 'calcmethod') is False:
             if len(set(y)) > 2:
                 # Binary classification case
@@ -1959,7 +1961,7 @@ class Learning(BaseEstimator):
             return rs_length_up
         else:
             return []
-
+    
     def find_candidates(self, length):
         """
         Returns the intersection of all suitable rules
@@ -1977,7 +1979,7 @@ class Learning(BaseEstimator):
             X = self.get_param('X')
         else:
             X = None
-
+        
         rs1, rs2 = ruleset.get_candidates(X, k, length, method, nb_jobs)
         self.set_params(ruleset=ruleset)
         
@@ -1986,14 +1988,14 @@ class Learning(BaseEstimator):
                 delayed(calc_intersection)(rule, rs1, cov_min, cov_max,
                                            X, low_memory)
                 for rule in rs2)
-
+            
             inter_list = functools.reduce(operator.add, inter_list)
-
+            
             inter_list = list(filter(None, inter_list))  # to drop bad rules
             inter_list = list(set(inter_list))  # to drop duplicates
-
+            
             rules_list += inter_list
-                
+        
         return rules_list
     
     def select_rules(self, length):
@@ -2008,7 +2010,6 @@ class Learning(BaseEstimator):
         epsilon = self.get_param('epsilon')
         
         x_train = self.get_param('X')
-        y_train = self.get_param('y')
         
         if length > 0:
             sub_ruleset = ruleset.extract_length(length)
@@ -2016,31 +2017,31 @@ class Learning(BaseEstimator):
             sub_ruleset = copy.deepcopy(ruleset)
         
         print('Number of rules: %s' % str(len(sub_ruleset)))
-
+        
         if hasattr(self, 'sigma'):
             sigma = self.get_param('sigma')
         else:
             sigma = min(sub_ruleset.get_rules_param('var'))
             self.set_params(sigma=sigma)
-
+        
         significant_list = list(filter(lambda rule: significant_test(rule, ymean,
-                                                                sigma, beta),
-                                  sub_ruleset))
+                                                                     sigma, beta),
+                                       sub_ruleset))
         [rule.set_params(significant=True) for rule in significant_list]
         significant_ruleset = RuleSet(significant_list)
         print('Number of rules after significant test: %s'
               % str(len(significant_ruleset)))
-
+        
         if len(significant_ruleset) > 0:
             significant_ruleset.sort_by('cov', True)
             # significant_ruleset.sort_by('crit', False)
             rg_add, selected_rs = self.select(significant_ruleset)
             print('Number of selected significant rules: %s' % str(rg_add))
-
+        
         else:
             selected_rs = None
             print('No significant rules selected!')
-
+        
         if self.coverage:
             # Add insignificant rules
             if selected_rs is None or selected_rs.calc_coverage(x_train) < 1:
@@ -2054,7 +2055,7 @@ class Learning(BaseEstimator):
                     insignificant_ruleset = RuleSet(insignificant_list)
                     print('Number rules after insignificant test: %s'
                           % str(len(insignificant_ruleset)))
-                
+                    
                     insignificant_ruleset.sort_by('var', False)
                     rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
                     print('Number insignificant rules added: %s' % str(rg_add))
@@ -2062,11 +2063,11 @@ class Learning(BaseEstimator):
                     print('No insignificant rule added.')
             else:
                 print('Covering is completed. No insignificant rule added.')
-
+            
             # Add rule to have a covering
             if selected_rs.calc_coverage(x_train) < 1:
                 print('Warning: Covering is not completed!')
-
+                
                 # neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
                 # features_name = self.get_param('features_name')
                 #
@@ -2087,9 +2088,9 @@ class Learning(BaseEstimator):
                 #     selected_rs.append(pos_rule)
             else:
                 print('Covering is completed.')
-            
+        
         return selected_rs
-
+    
     def select(self, rs, selected_rs=None):
         # y_train = self.get_param('y')
         # calcmethod = self.get_param('calcmethod')
@@ -2113,13 +2114,13 @@ class Learning(BaseEstimator):
         # old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
         # crit_evo.append(old_criterion)
         nb_rules = len(rs)
-
+        
         activation_rs = selected_rs.calc_activation(x_train)
         if low_memory:
             [r.set_params(activation=r.get_activation(x_train)) for r in selected_rs]
         else:
             pass
-            
+        
         while calc_coverage(activation_rs) < 1 and i < nb_rules:
             rs_copy = copy.deepcopy(selected_rs)
             new_rules = rs[i]
@@ -2130,24 +2131,24 @@ class Learning(BaseEstimator):
             union_tests = [new_rules.union_test(rule.get_activation(x_train),
                                                 gamma, x_train)
                            for rule in rs_copy]
-        
+            
             if all(union_tests) and \
                     new_rules.union_test(activation_rs, gamma, x_train):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
                 # new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, calcmethod)
-            
+                
                 selected_rs = copy.deepcopy(new_rs)
                 activation_rs = selected_rs.calc_activation(x_train)
                 # old_criterion = new_criterion
                 rg_add += 1
-                
+            
             # crit_evo.append(old_criterion)
             i += 1
-    
+        
         # self.set_params(critlist=crit_evo)
         return rg_add, selected_rs
-
+    
     def predict(self, X, check_input=True):
         """
         Predict regression target for X.
@@ -2175,7 +2176,6 @@ class Learning(BaseEstimator):
         x_copy = self.discretize(X)
         
         ruleset = self.get_param('selected_rs')
-        ymean = self.get_param('ymean')
         
         prediction_vector, bad_cells, no_rules = ruleset.predict(y_train, x_train, x_copy)
         
@@ -2226,6 +2226,7 @@ class Learning(BaseEstimator):
                             multioutput='variance_weighted')
     
     """------   Data functions   -----"""
+    
     def validate_X_predict(self, X, check_input):
         """
         Validate X whenever one tries to predict, apply, predict_proba
@@ -2277,7 +2278,7 @@ class Learning(BaseEstimator):
                 xcol = np.array(xcol.flat, dtype=np.str)
             
             var_name = features_name[i]
-
+            
             if np.issubdtype(xcol.dtype, np.floating):
                 if var_name not in bins_dict:
                     if len(set(xcol)) >= nb_bucket:
@@ -2518,11 +2519,11 @@ class Learning(BaseEstimator):
         rs = self.get_param('selected_rs')
         if x is None and self.get_param('low_memory'):
             x = self.get_param('X')
-            
+        
         f = rs.plot_dist(x=x)
         
         return f
-        
+    
     def plot_intensity(self):
         """
         Function plots a graphical counter of variables used in rules.
