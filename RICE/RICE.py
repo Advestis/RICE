@@ -1500,12 +1500,6 @@ class RuleSet(object):
         
         nb_rules_active = prediction_matrix.sum(axis=1)
         nb_rules_active[nb_rules_active == 0] = -1  # If no rule is activated
-        
-        no_rules = np.where(nb_rules_active == -1)[0]
-        # no_rules = list(filter(lambda c: c == -1, nb_rules_active))
-        if len(no_rules) > 0:
-            print('Error with %s new observations:' % str(len(no_rules)))
-            print('No activated rule!')
 
         # Activation of the intersection of all NOT activated rules at each row
         no_activation_vector = np.dot(no_activation_matrix, activation_matrix)
@@ -1518,43 +1512,30 @@ class RuleSet(object):
 
         # Calculation of the binary vector for cells of the partition et each row
         cells = ((dot_activation - no_activation_vector) > 0)
-        bad_cells = np.where(np.sum(cells, axis=1) == 0)[0]
-        bad_cells = list(filter(lambda i: i not in no_rules, bad_cells))
         
-        # # Activation of the intersection of all activated rules at each row
-        # id_bad_cells = list(range(len(x_test)))
-        # cells = np.zeros((len(x_test), len(y_train)))
-        # accu = 0
-        #
-        # while len(id_bad_cells) > 0 and accu <= np.max(nb_rules_active[id_bad_cells]):
-        #     print('Accu : %s' % str(accu))
-        #     # Activation vectors for intersection of activated rules
-        #     dot_activation = np.dot(prediction_matrix, activation_matrix)
-        #     dot_activation = np.array([np.greater_equal(act, max(0, nb_rules - accu)) for act, nb_rules in
-        #                                zip(dot_activation, nb_rules_active)], dtype='int')
-        #
-        #     # Calculation of the binary vector for cells of the partition et each row
-        #     cells[id_bad_cells, :] = ((dot_activation - no_activation_vector) > 0)[id_bad_cells, :]
-        #
-        #     id_bad_cells = [i for i, x in enumerate([sum(c) == 0 for c in cells]) if x == 1]
-        #     if accu == 0:
-        #         print('Warning!')
-        #         print('Uncovered zone by the training sample:', id_bad_cells)
-        #         bad_cells = id_bad_cells
-        #
-        #     accu += 1
-            
+        # Calculation of the expectation of the complementary
+        no_act = 1 - self.calc_activation(x_train)
+        no_pred = np.mean(np.extract(y_train, no_act))
+    
+        # Get empty significant cells
+        significant_rules = np.where(np.array(self.get_rules_param('significant')) == True)[0]
+        temp = prediction_matrix[:, significant_rules]
+        nb_rules_active = temp.sum(axis=1)
+        nb_rules_active[nb_rules_active == 0] = -1
+        empty_cells = np.where(nb_rules_active == -1)[0]
+
+        # Get empty insignificant cells
+        bad_cells = np.where(np.sum(cells, axis=1) == 0)[0]
+        bad_cells = list(filter(lambda i: i not in empty_cells, bad_cells))
+        
         # Calculation of the conditional expectation in each cell
         prediction_vector = [calc_prediction(act, y_train) for act in cells]
         prediction_vector = np.array(prediction_vector)
-
-        no_act = 1 - self.calc_activation(x_train)
-        no_pred = np.mean(np.extract(y_train, no_act))
-        # Replace prediction 0 by the mean of Y on the no activated rule
-        prediction_vector[no_rules] = no_pred
-        # prediction_vector[prediction_vector == 0] = no_pred
-
-        return prediction_vector, bad_cells, no_rules
+        
+        prediction_vector[bad_cells] = no_pred
+        prediction_vector[empty_cells] = 0.0
+        
+        return prediction_vector, bad_cells, empty_cells
     
     def calc_activation(self, x=None):
         """
@@ -1693,7 +1674,7 @@ class RuleSet(object):
             candidates.append(RuleSet(rules_list))
             
         return candidates[0], candidates[1]
-           
+        
     def get_rules_param(self, param):
         """
         To get the list of a parameter param of the rules in self
@@ -1773,7 +1754,7 @@ class Learning(BaseEstimator):
         self.alpha = 1. / 2 - 1. / 100
         self.gamma = 0.95
         self.nb_jobs = -2
-        self.coverage = False
+        self.coverage = True
 
         for arg, val in parameters.items():
             setattr(self, arg, val)
@@ -2066,19 +2047,19 @@ class Learning(BaseEstimator):
                 insignificant_list = filter(lambda rule: insignificant_test(rule, sigma,
                                                                             epsilon),
                                             sub_ruleset)
-                if len(list(significant_list)) > 0:
-                    insignificant_list = list(filter(lambda rule: rule not in significant_list,
-                                                insignificant_list))
-
-                [rule.set_params(significant=False) for rule in insignificant_list]
-                insignificant_ruleset = RuleSet(insignificant_list)
-                print('Number rules after insignificant test: %s'
-                      % str(len(insignificant_ruleset)))
-
-                insignificant_ruleset.sort_by('var', False)
-                rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
-                print('Number insignificant rules added: %s' % str(rg_add))
-
+                insignificant_list = list(filter(lambda rule: rule not in significant_list,
+                                                 insignificant_list))
+                if len(list(insignificant_list)) > 0:
+                    [rule.set_params(significant=False) for rule in insignificant_list]
+                    insignificant_ruleset = RuleSet(insignificant_list)
+                    print('Number rules after insignificant test: %s'
+                          % str(len(insignificant_ruleset)))
+                
+                    insignificant_ruleset.sort_by('var', False)
+                    rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
+                    print('Number insignificant rules added: %s' % str(rg_add))
+                else:
+                    print('No insignificant rule added.')
             else:
                 print('Covering is completed. No insignificant rule added.')
 

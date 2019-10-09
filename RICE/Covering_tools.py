@@ -519,7 +519,7 @@ def calc_pred(ruleset, y_train, x_train=None, x_test=None):
     no_act = 1 - ruleset.calc_activation(x_train)
     no_pred = np.mean(np.extract(y_train, no_act))
     # Replace prediction 0 by the mean of Y on the no activated rule
-    prediction_vector[no_rules] = no_pred
+    prediction_vector[bad_cells] = no_pred
     # prediction_vector[prediction_vector == 0] = no_pred
 
     return prediction_vector, bad_cells, no_rules
