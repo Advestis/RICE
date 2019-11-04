@@ -110,17 +110,25 @@ def extract_rules_rulefit(rules, features, bmin_list, bmax_list):
             
             if '>' in sub_rule:
                 sub_rule = sub_rule.split(' > ')
-                feat_id = sub_rule[0].split('_')[-1]
-                feat_id = int(feat_id)
-                features_name += [features[feat_id]]
+                if 'feature_' in sub_rule[0]:
+                    feat_id = sub_rule[0].split('_')[-1]
+                    feat_id = int(feat_id)
+                    features_name += [features[feat_id]]
+                else:
+                    features_name += [sub_rule[0]]
+                    feat_id = features.index(sub_rule[0])
                 features_index += [feat_id]
                 bmin += [float(sub_rule[-1])]
                 bmax += [bmax_list[feat_id]]
             else:
                 sub_rule = sub_rule.split(' < ')
-                feat_id = sub_rule[0].split('_')[-1]
-                feat_id = int(feat_id)
-                features_name += [features[feat_id]]
+                if 'feature_' in sub_rule[0]:
+                    feat_id = sub_rule[0].split('_')[-1]
+                    feat_id = int(feat_id)
+                    features_name += [features[feat_id]]
+                else:
+                    features_name += [sub_rule[0]]
+                    feat_id = features.index(sub_rule[0])
                 features_index += [feat_id]
                 bmax += [float(sub_rule[-1])]
                 bmin += [bmin_list[feat_id]]
