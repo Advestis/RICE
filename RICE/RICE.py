@@ -321,7 +321,7 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     criterion : {float type}
            The value of the criteria for the method
     """
-    prediction_vector = ruleset.calc_pred(y_train=y_train, x_train=x_train)
+    prediction_vector, bad_cells, no_rules = ruleset.calc_pred(y_train=y_train, x_train=x_train)
     criterion = calc_criterion(prediction_vector, y_train, method)
     return criterion
 
