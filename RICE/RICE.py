@@ -2067,7 +2067,7 @@ class Learning(BaseEstimator):
             # Add rule to have a covering
             if selected_rs.calc_coverage(x_train) < 1:
                 print('Warning: Covering is not completed!')
-                
+                print(selected_rs.calc_coverage(x_train))
                 # neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
                 # features_name = self.get_param('features_name')
                 #
