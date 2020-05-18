@@ -989,6 +989,10 @@ class Rule(object):
         None : if the rule does not verified coverage conditions
         """
         
+        # TODO check that it can work with dataframes and series
+        # (extract data if necessary)
+        
+        dtype=y.dtype
         if first_selection:
             self.set_params(out=False)
             activation_vector = self.calc_activation(x=x)
@@ -1017,6 +1021,11 @@ class Rule(object):
             self.set_params(var=cond_var)
 
             prediction_vector = activation_vector * prediction
+            # If Ys are binned, their values are integer, but means will be floats
+            # Round then cast predictions to integer in that case.
+            if dtype == int:
+                prediction_vector = prediction_vector.round().astype(int)
+            
             complementary_prediction = calc_prediction(1 - activation_vector, y)
             np.place(prediction_vector, prediction_vector == 0,
                      complementary_prediction)
