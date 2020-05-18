@@ -734,6 +734,9 @@ class RuleConditions(object):
         activation_vector: {array-like matrix, shape=(n_samples, 1)}
                      The activation vector
         """
+        
+        # TODO : check if X is a DataFrame of Series. If so, check the ordering of
+        # its index with respect to feature_names and feature_index.
         length = len(self.features_name)
         geq_min = True
         leq_min = True
@@ -951,7 +954,7 @@ class Rule(object):
         return new_rule
 
     def calc_stats(self, x, y, method='mse',
-                   cov_min=0.01, cov_max=0.5, low_memory=False):
+                   cov_min=0.01, cov_max=0.5, low_memory=False, first_selection=True):
         """
         Calculation of all statistics of an rules
 
@@ -975,36 +978,52 @@ class Rule(object):
         low_memory : {bool type}
                      To save activation vectors of rules
 
+        first_selection : {bool type}
+                          If True, calc activation vector and coverage,
+                          check cov conditions and returns
+                          If False, compute all stats (will call itself with
+                          first_selection True if act vec was not computed yet)
+
         Return
         ------
         None : if the rule does not verified coverage conditions
         """
-        self.set_params(out=False)
-        activation_vector = self.calc_activation(x=x)
+        
+        if first_selection:
+            self.set_params(out=False)
+            activation_vector = self.calc_activation(x=x)
 
-        if sum(activation_vector) > 0:
-            if low_memory is False:
-                self.set_params(activation=activation_vector)
+            if sum(activation_vector) > 0:
+                if low_memory is False:
+                    self.set_params(activation=activation_vector)
 
-            cov = calc_coverage(activation_vector)
-            self.set_params(cov=cov)
+                cov = calc_coverage(activation_vector)
+                self.set_params(cov=cov)
 
-            if cov >= cov_max or cov <= cov_min:
-                self.set_params(out=True)
-            else:
-                prediction = calc_prediction(activation_vector, y)
-                self.set_params(pred=prediction)
+                if cov >= cov_max or cov <= cov_min:
+                    self.set_params(out=True)
+                    return
+        else:
+            if not hasattr(self, "activation"):
+                self.calc_stats(x, y, method, cov_min, cov_max, first_selection=True)
+                if self.get_param("out"):
+                    return
+                    
+            activation_vector = self.get_param("activation")
+            prediction = calc_prediction(activation_vector, y)
+            self.set_params(pred=prediction)
 
-                cond_var = calc_variance(activation_vector, y)
-                self.set_params(var=cond_var)
+            cond_var = calc_variance(activation_vector, y)
+            self.set_params(var=cond_var)
 
-                prediction_vector = activation_vector * prediction
-                complementary_prediction = calc_prediction(1 - activation_vector, y)
-                np.place(prediction_vector, prediction_vector == 0,
-                         complementary_prediction)
+            prediction_vector = activation_vector * prediction
+            complementary_prediction = calc_prediction(1 - activation_vector, y)
+            np.place(prediction_vector, prediction_vector == 0,
+                     complementary_prediction)
 
-                rez = calc_criterion(prediction_vector, y, method)
-                self.set_params(crit=rez)
+            rez = calc_criterion(prediction_vector, y, method)
+            self.set_params(crit=rez)
+            exec("self.set_params(" + method + "=rez)")
 
         else:
             self.set_params(out=True)
