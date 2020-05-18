@@ -1061,7 +1061,7 @@ class Rule(object):
         # No need to check y type, it is done in calc_prediction(), calc_variance()
         # and calc_criterion()
         
-        dtype=y.dtype
+        dtype = y.dtype
         if first_selection:
             self.set_params(out=False)
             activation_vector = self.calc_activation(x=x)
@@ -1102,9 +1102,6 @@ class Rule(object):
             rez = calc_criterion(prediction_vector, y, method)
             self.set_params(crit=rez)
             exec("self.set_params(" + method + "=rez)")
-
-        else:
-            self.set_params(out=True)
 
     def calc_activation(self, x=None):
         """
@@ -1749,7 +1746,7 @@ class Learning(BaseEstimator):
         """
         
         # TODO : maybe check index if df or series ?
-        data_X = x
+        data_X = X
         data_y = y
         if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
             data_y = y.values
@@ -1758,7 +1755,7 @@ class Learning(BaseEstimator):
         
         # Check type for data
         # type: np.ndarray
-        data_X = check_array(data_X, dtype=None, force_all_finite=False)  
+        data_X = check_array(data_X, dtype=None, force_all_finite=False)
         data_y = check_array(data_y, dtype=None, ensure_2d=False,
                              force_all_finite=False)  # type: np.ndarray
 
@@ -2218,7 +2215,7 @@ class Learning(BaseEstimator):
             th_val = (min(data_y) + max(data_y)) / 2.0
             prediction_vector = list(
                 map(lambda p: min(data_y) if p < th_val else max(data_y),
-                prediction_vector))
+                    prediction_vector))
             return accuracy_score(data_y, prediction_vector)
         else:
             return r2_score(data_y, prediction_vector, sample_weight=sample_weight,
