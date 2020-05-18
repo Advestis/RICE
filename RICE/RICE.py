@@ -6,20 +6,19 @@ Created on 22 sept. 2016
 import copy
 import operator
 import functools
-from collections import Counter
 
 import numpy as np
 import pandas as pd
 import scipy.spatial.distance as scipy_dist
-
-from matplotlib import patches
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from collections import Counter
+from joblib import Parallel, delayed
+from matplotlib import patches
 from sklearn.base import BaseEstimator
 from sklearn.metrics import accuracy_score, r2_score
 from sklearn.utils import check_array
-from sklearn.externals.joblib import Parallel, delayed
 from sklearn.cluster import KMeans
 
 """
