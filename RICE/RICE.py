@@ -13,6 +13,7 @@ import scipy.spatial.distance as scipy_dist
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from bisect import bisect
 from collections import Counter
 from joblib import Parallel, delayed
 from matplotlib import patches
@@ -77,10 +78,10 @@ def make_rules(feature_name, feature_index, X, y,
     feature_index : {int type}
                     Columns index of the feature
 
-    X : {array-like or discretized matrix, shape = [n, d]}
+    X : {array-like or discretized matrix or DataFrame or Series, shape = [n, d]}
         The training input samples after discretization.
 
-    y : {array-like, shape = [n]}
+    y : {array-like or DataFrame or Series, shape = [n]}
         The normalized target values (real numbers).
 
     method : {string type}
@@ -100,7 +101,13 @@ def make_rules(feature_name, feature_index, X, y,
     rules_list : {list type}
                the list of all suitable rules on the chosen feature.
     """
-    xcol = X[:, feature_index]
+    
+    # TODO : if df or series, check index ?
+    data_x = X
+    if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
+        data_x = X.values
+    xcol = data_x[:, feature_index]
+    # No need to check y type since it is done in eval_rules
 
     try:
         xcol = np.array(xcol, dtype=np.float)
@@ -124,7 +131,7 @@ def make_rules(feature_name, feature_index, X, y,
                                             values=values)
 
                 rule = Rule(conditions)
-                rules_list.append(eval_rule(rule, X, y, method,
+                rules_list.append(eval_rule(rule, data_x, y, method,
                                             cov_min, cov_max, low_memory))
 
         else:
@@ -138,7 +145,8 @@ def make_rules(feature_name, feature_index, X, y,
                                         values=values)
 
             rule = Rule(conditions)
-            rules_list.append(eval_rule(rule, X, y, method, cov_min, cov_max, low_memory))
+            rules_list.append(eval_rule(rule, data_x, y, method,
+                                        cov_min, cov_max, low_memory))
 
     rules_list = list(filter(None, rules_list))
     return rules_list
@@ -153,10 +161,10 @@ def eval_rule(rule, X, y, method, cov_min, cov_max, low_memory):
     rule : {rule type}
              An rule object (it means with condition on X)
 
-    X : {array-like or discretized matrix, shape = [n, d]}
+    X : {array-like or discretized matrix or DataFrame or Series, shape = [n, d]}
         The training input samples after discretization.
 
-    y : {array-like, shape = [n]}
+    y : {array-like or DataFrame or Series, shape = [n]}
         The normalized target values (real numbers).
 
     method : {string type}
@@ -183,6 +191,9 @@ def eval_rule(rule, X, y, method, cov_min, cov_max, low_memory):
              rule with all statistics calculated
 
     """
+    
+    # No need to check X and y type, it is done in calc_stats
+    
     rule.calc_stats(x=X, y=y, method=method, cov_min=cov_min,
                     cov_max=cov_max, low_memory=low_memory)
 
@@ -211,7 +222,8 @@ def calc_intersection(rule, ruleset, cov_min,
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
 
-    X : {array-like or discretized matrix, shape = [n, d] or None}
+    X : {array-like or discretized matrix or DataFrame or Series,
+        shape = [n, d] or None}
         The training input samples after discretization.
         If low_memory is True X must not be None
 
@@ -225,6 +237,9 @@ def calc_intersection(rule, ruleset, cov_min,
                  rules from the rules set ruleset_l1.
 
     """
+    
+    # No need to check X and y type, it is done in intersect
+    
     rules_list = [rule.intersect(r, cov_min, cov_max, X, low_memory)
                   for r in ruleset]
     rules_list = list(filter(None, rules_list))  # to drop bad rules
@@ -241,10 +256,10 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     ruleset : {ruleset type}
              A set of rules
 
-    y_train : {array-like, shape = [n]}
+    y_train : {array-like or DataFrame or Series, shape = [n]}
            The normalized target values (real numbers).
 
-    x_train : {array-like, shape = [n]}
+    x_train : {array-like or DataFrame or Series, shape = [n]}
               The normalized target values (real numbers).
 
     method : {string type}
@@ -255,6 +270,9 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     criterion : {float type}
            The value of the criteria for the method
     """
+    
+    # No need to check X and y type, it is done in calc_pred and calc_criterion
+    
     prediction_vector, bad_cells, no_rules = ruleset.calc_pred(y_train=y_train,
                                                                x_train=x_train)
     criterion = calc_criterion(prediction_vector, y_train, method)
@@ -262,6 +280,9 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
 
 
 def find_cluster(ruleset, X, k, n_jobs):
+    
+    # No need to check X and y type, it is done in get_activation
+    
     if len(ruleset) > k:
         prediction_matrix = np.array([rule.get_param('pred') * rule.get_activation(X)
                                       for rule in ruleset])
@@ -348,7 +369,7 @@ def mse_function(prediction_vector, y):
                 different values ymean, if the rule is not active
                 and the prediction is the rule is active.
 
-    y : {array type}
+    y : {array type or DataFrame or Series}
         The real target values (real numbers)
 
     Return
@@ -356,9 +377,14 @@ def mse_function(prediction_vector, y):
     criterion : {float type}
            the mean squared error
     """
-    assert len(prediction_vector) == len(y), \
+    
+    data_y = y
+    if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+        data_y = y.values
+    
+    assert len(prediction_vector) == len(data_y), \
         'The two array must have the same length'
-    error_vector = prediction_vector - y
+    error_vector = prediction_vector - data_y
     criterion = np.nanmean(error_vector ** 2)
     return criterion
 
@@ -375,7 +401,7 @@ def mae_function(prediction_vector, y):
                 different values ymean, if the rule is not active
                 and the prediction is the rule is active.
 
-    y : {array type}
+    y : {array type or DataFrame or Series}
         The real target values (real numbers)
 
     Return
@@ -383,9 +409,14 @@ def mae_function(prediction_vector, y):
     criterion : {float type}
            the mean absolute error
     """
-    assert len(prediction_vector) == len(y), \
+    
+    data_y = y
+    if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+        data_y = y.values
+    
+    assert len(prediction_vector) == len(data_y), \
         'The two array must have the same length'
-    error_vect = np.abs(prediction_vector - y)
+    error_vect = np.abs(prediction_vector - data_y)
     criterion = np.nanmean(error_vect)
     return criterion
 
@@ -402,7 +433,7 @@ def aae_function(prediction_vector, y):
                 different values ymean, if the rule is not active
                 and the prediction is the rule is active.
 
-    y : {array type}
+    y : {array type or DataFrame or Series}
         The real target values (real numbers)
 
     Return
@@ -410,10 +441,15 @@ def aae_function(prediction_vector, y):
     criterion : {float type}
            the mean squared error
     """
-    assert len(prediction_vector) == len(y), \
+    
+    data_y = y
+    if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+        data_y = y.values
+    
+    assert len(prediction_vector) == len(data_y), \
         'The two array must have the same length'
-    error_vector = np.mean(np.abs(prediction_vector - y))
-    median_error = np.mean(np.abs(y - np.median(y)))
+    error_vector = np.mean(np.abs(prediction_vector - data_y))
+    median_error = np.mean(np.abs(data_y - np.median(data_y)))
     return error_vector / median_error
 
 
@@ -428,7 +464,7 @@ def calc_criterion(prediction_vector, y, method='mse'):
                 different values ymean, if the rule is not active
                 and the prediction is the rule is active.
 
-    y : {array type}
+    y : {array type or DataFrame or Series}
         The real target values (real numbers)
 
     method : {string type}
@@ -439,7 +475,12 @@ def calc_criterion(prediction_vector, y, method='mse'):
     criterion : {float type}
            Criteria value
     """
-    y_fillna = np.nan_to_num(y)
+    
+    data_y = y
+    if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+        data_y = y.values
+    
+    y_fillna = np.nan_to_num(data_y)
 
     if method == 'mse':
         criterion = mse_function(prediction_vector, y_fillna)
@@ -517,7 +558,7 @@ def calc_prediction(activation_vector, y):
                   different values 0, if the rule is not active
                   and the 1 is the rule is active.
 
-    y : {array type}
+    y : {array type or DataFrame or Series}
         The target values (real numbers)
 
     Return
@@ -526,7 +567,12 @@ def calc_prediction(activation_vector, y):
            The empirical conditional expectation of y
            knowing X
     """
-    y_cond = np.extract(activation_vector != 0, y)
+    
+    data_y = y
+    if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+        data_y = y.values
+    
+    y_cond = np.extract(activation_vector != 0, data_y)
     if sum(~np.isnan(y_cond)) == 0:
         return 0
     else:
@@ -541,7 +587,7 @@ def calc_variance(activation_vector, y):
 
     Parameters
     ----------
-    activation_vector : {array type}
+    activation_vector : {array type, or DataFrame or Series}
                   A activation vector. It means a sparse array with two
                   different values 0, if the rule is not active
                   and the 1 is the rule is active.
@@ -558,7 +604,10 @@ def calc_variance(activation_vector, y):
     # cov = calc_coverage(activation_vector)
     # y_cond = activation_vector * y
     # cond_var = 1. / cov * (np.mean(y_cond ** 2) - 1. / cov * np.mean(y_cond) ** 2)
-    sub_y = np.extract(activation_vector, y)
+    data_y = y
+    if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+        data_y = y.values
+    sub_y = np.extract(activation_vector, data_y)
     cond_var = np.var(sub_y)
 
     return cond_var
@@ -634,8 +683,10 @@ def discretize(x, nb_bucket, bins=None):
             if bins is None:
                 bins = find_bins(x, nb_bucket)
             # discretization of the xcol with bins
-            x_discretized = np.digitize(x, bins=bins)
-            x_discretized = np.array(x_discretized, dtype='float')
+            # x_discretized = np.digitize(x, bins=bins)
+            # x_discretized = np.array(x_discretized, dtype='float')
+            # Quicker than np.digitize
+            x_discretized = bisect(bins, x)
 
             if sum(nan_index) > 0:
                 x_discretized[nan_index] = np.nan
@@ -697,7 +748,8 @@ class RuleConditions(object):
             values = []
         else:
             assert isinstance(values, (tuple, list, np.ndarray)), \
-                'Type of parameter must be iterable tuple, list or array' % features_name
+                'Type of parameter must be' \
+                'iterable tuple, list or array' % features_name
 
         self.values = [values]
 
@@ -726,7 +778,7 @@ class RuleConditions(object):
 
         Parameters
         ----------
-        X: {array-like matrix, shape=(n_samples, n_features)}
+        X: {array-like matrix or DataFrame or Series, shape=(n_samples, n_features)}
               Input data
 
         Returns
@@ -737,13 +789,17 @@ class RuleConditions(object):
         
         # TODO : check if X is a DataFrame of Series. If so, check the ordering of
         # its index with respect to feature_names and feature_index.
+        data_x = X
+        if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
+            data_x = X.values
+        
         length = len(self.features_name)
         geq_min = True
         leq_min = True
         not_nan = True
         for i in range(length):
             col_index = self.features_index[i]
-            x_col = X[:, col_index]
+            x_col = data_x[:, col_index]
 
             # Turn x_col to array
             if len(x_col) > 1:
@@ -851,6 +907,9 @@ class Rule(object):
         Test to know if a rule (self) and an other (rule)
         are included
         """
+        
+        # No need to check x type, it is done in get_activation()
+        
         activation_self = self.get_activation(x)
         activation_other = rule.get_activation(x)
 
@@ -893,6 +952,9 @@ class Rule(object):
         Test 2: self and rule have not condition on the same variable
         Test 3: self and rule have not included activation
         """
+        
+        # No need to check x type, it is done in test_included()
+        
         if self.test_variables(rule) is False:
             return self.test_included(rule=rule, x=X)
         else:
@@ -903,6 +965,9 @@ class Rule(object):
         Test to know if a rule (self) and an activation vector have
         at more gamma percent of points in common
         """
+        
+        # No need to check X type, it is done in get_activation()
+        
         self_vect = self.get_activation(X)
         intersect_vect = np.logical_and(self_vect, activation)
 
@@ -933,6 +998,9 @@ class Rule(object):
         (self) and an other (rulessert).
         Suitable means that self and rule satisfied the intersection test
         """
+        
+        # No need to check x type, it is done in intersect_test()
+        
         new_rule = None
         # if self.get_param('pred') * rule.get_param('pred') > 0:
         activation = self.intersect_test(rule, X)
@@ -954,16 +1022,16 @@ class Rule(object):
         return new_rule
 
     def calc_stats(self, x, y, method='mse',
-                   cov_min=0.01, cov_max=0.5, low_memory=False, first_selection=True):
+                   cov_min=0.01, cov_max=0.5, low_memory=False, first_selection=False):
         """
         Calculation of all statistics of an rules
 
         Parameters
         ----------
-        x : {array-like or discretized matrix, shape = [n, d]}
+        x : {array-like or discretized matrix or DataFrame or Series, shape = [n, d]}
             The training input samples after discretization.
 
-        y : {array-like, shape = [n]}
+        y : {array-like or DataFrame or Series, shape = [n]}
             The normalized target values (real numbers).
 
         method : {string type}
@@ -989,8 +1057,9 @@ class Rule(object):
         None : if the rule does not verified coverage conditions
         """
         
-        # TODO check that it can work with dataframes and series
-        # (extract data if necessary)
+        # No need to check x type, it is done in calc_activation()
+        # No need to check y type, it is done in calc_prediction(), calc_variance()
+        # and calc_criterion()
         
         dtype=y.dtype
         if first_selection:
@@ -1041,12 +1110,14 @@ class Rule(object):
         """
         Compute the activation vector of an rule
         """
+        # No need to check x type, it is done in transform()
         return self.conditions.transform(x)
 
     def predict(self, x=None):
         """
         Compute the prediction of an rule
         """
+        # No need to check x type, it is done in calc_activation()
         prediction = self.get_param('pred')
         if x is not None:
             activation = self.calc_activation(x=x)
@@ -1063,10 +1134,11 @@ class Rule(object):
 
         Parameters
         ----------
-        x : array-like, shape = (n_samples, n_features)
+        x : array-like or DataFrame or Series, shape = (n_samples, n_features)
             Test samples.
 
-        y : array-like, shape = (n_samples) or (n_samples, n_outputs)
+        y : array-like or DataFrame or Series,
+            shape = (n_samples) or (n_samples, n_outputs)
             True values for X.
 
         sample_weight : array-like, shape = [n_samples], optional
@@ -1084,9 +1156,14 @@ class Rule(object):
         score : float
             Mean accuracy of self.predict(X) wrt. y in {0,1}
         """
+        # No need to check x type, it is done in predict()
         prediction_vector = self.predict(x)
-
-        y = np.extract(np.isfinite(y), y)
+        
+        data_y = y
+        if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+            data_y = y.values
+        
+        data_y = np.extract(np.isfinite(data_y), data_y)
         prediction_vector = np.extract(np.isfinite(y), prediction_vector)
 
         if score_type == 'Classification':
@@ -1147,6 +1224,7 @@ class Rule(object):
         To get the activation vector of self.
         If it does not exist the function return None
         """
+        # No need to check x type, it is done in transform()
         if x is not None:
             return self.conditions.transform(x)
         else:
@@ -1161,6 +1239,7 @@ class Rule(object):
         To get the activation vector of self.
         If it does not exist the function return None
         """
+        # No need to check x type, it is done in calc_activation()
         if hasattr(self, 'pred'):
             prediction = self.get_param('pred')
             if hasattr(self, 'activation'):
@@ -1351,13 +1430,27 @@ class RuleSet(object):
         Computes the prediction vector
         using an rule based partition
         """
+        
+        # TODO: maybe add tests on index if dataframes or series ?
+        data_y = y_train
+        data_x = x_train
+        data_x_test = x_test
+        if isinstance(y_train, pd.Series) or isinstance(y_train, pd.DataFrame):
+            data_y = y_train.values
+        if x_train is not None:
+            if isinstance(x_train, pd.Series) or isinstance(x_train, pd.DataFrame):
+                data_x = x_train.values
+        if x_test is not None:
+            if isinstance(x_test, pd.Series) or isinstance(x_test, pd.DataFrame):
+                data_x_test = x_test.values
+        
         # Activation of all rules in the learning set
-        activation_matrix = np.array([rule.get_activation(x_train) for rule in self])
+        activation_matrix = np.array([rule.get_activation(data_x) for rule in self])
 
-        if x_test is None:
+        if data_x_test is None:
             prediction_matrix = activation_matrix.T
         else:
-            prediction_matrix = [rule.calc_activation(x_test) for rule in self]
+            prediction_matrix = [rule.calc_activation(data_x_test) for rule in self]
             prediction_matrix = np.array(prediction_matrix).T
 
         no_activation_matrix = np.logical_not(prediction_matrix)
@@ -1378,8 +1471,8 @@ class RuleSet(object):
         cells = ((dot_activation - no_activation_vector) > 0)
 
         # Calculation of the expectation of the complementary
-        no_act = 1 - self.calc_activation(x_train)
-        no_pred = np.mean(np.extract(y_train, no_act))
+        no_act = 1 - self.calc_activation(data_x)
+        no_pred = np.mean(np.extract(data_y, no_act))
 
         # Get empty significant cells
         significant_list = np.array(self.get_rules_param('significant'), dtype=int)
@@ -1394,7 +1487,7 @@ class RuleSet(object):
         bad_cells = list(filter(lambda i: i not in empty_cells, bad_cells))
 
         # Calculation of the conditional expectation in each cell
-        prediction_vector = [calc_prediction(act, y_train) for act in cells]
+        prediction_vector = [calc_prediction(act, data_y) for act in cells]
         prediction_vector = np.array(prediction_vector)
 
         prediction_vector[bad_cells] = no_pred
@@ -1406,6 +1499,7 @@ class RuleSet(object):
         """
         Compute the  activation vector of a set of rules
         """
+        # No need to check x type, it is done in get_activation
         activation_vector = [rule.get_activation(x) for rule in self]
         activation_vector = np.sum(activation_vector, axis=0)
         activation_vector = 1 * activation_vector.astype('bool')
@@ -1416,6 +1510,7 @@ class RuleSet(object):
         """
         Compute the coverage rate of a set of rules
         """
+        # No need to check x type, it is done in calc_activation
         if len(self) > 0:
             activation_vector = self.calc_activation(x)
             cov = calc_coverage(activation_vector)
@@ -1427,7 +1522,9 @@ class RuleSet(object):
         """
         Computes the prediction vector for a given X and a given aggregation method
         """
-        prediction_vector, bad_cells, no_rules = self.calc_pred(y_train, x_train, x_test)
+        # No need to check x nor y type, it is done in calc_pred
+        prediction_vector, bad_cells, no_rules = self.calc_pred(
+            y_train, x_train, x_test)
         return prediction_vector, bad_cells, no_rules
 
     def make_rule_names(self):
@@ -1475,6 +1572,9 @@ class RuleSet(object):
         return f
 
     def plot_dist(self, x=None, metric=dist):
+        
+        # No need to check x type, it is done in get_predictions_vector()
+        
         rules_names = self.get_rules_name()
 
         predictions_vector_list = [rule.get_predictions_vector(x) for rule in self]
@@ -1511,6 +1611,8 @@ class RuleSet(object):
 
     """------   Getters   -----"""
     def get_candidates(self, X, k, length, method, nb_jobs):
+    
+        # No need to check x type, it is done in find_cluster()
         candidates = []
         for l in [1, length - 1]:
             rs_length_l = self.extract_length(l)
@@ -1574,7 +1676,8 @@ class RuleSet(object):
         rules_list = list(filter(lambda rule: rule.get_param('length') == length, self))
         list(map(lambda rule, rules_id: rule.set_params(cluster=params[rules_id]),
                  rules_list, range(len(rules_list))))
-        rules_list += list(filter(lambda rule: rule.get_param('length') != length, self))
+        rules_list += list(filter(lambda rule: rule.get_param('length') != length,
+                                  self))
 
         self.rules = rules_list
 
@@ -1635,39 +1738,49 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        X : {array-like or sparse matrix, shape = [n, d]}
+        X : {array-like or sparse matrix or DataFrame or Series, shape = [n, d]}
             The training input samples.
 
-        y : {array-like, shape = [n]}
+        y : {array-like or DataFrame or Series, shape = [n]}
             The target values (real numbers).
 
         features_name : {list}, optional
                         Name of each features
         """
+        
+        # TODO : maybe check index if df or series ?
+        data_X = x
+        data_y = y
+        if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+            data_y = y.values
+        if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
+            data_X = X.values
+        
         # Check type for data
-        X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
-        y = check_array(y, dtype=None, ensure_2d=False,
-                        force_all_finite=False)  # type: np.ndarray
+        # type: np.ndarray
+        data_X = check_array(data_X, dtype=None, force_all_finite=False)  
+        data_y = check_array(data_y, dtype=None, ensure_2d=False,
+                             force_all_finite=False)  # type: np.ndarray
 
         # Creation of data-driven parameters
         if hasattr(self, 'beta') is False:
-            beta = 1. / pow(X.shape[0], 1. / 4 - self.alpha / 2.)
+            beta = 1. / pow(data_X.shape[0], 1. / 4 - self.alpha / 2.)
             self.set_params(beta=beta)
 
         if hasattr(self, 'epsilon') is False:
             beta = self.get_param('beta')
-            epsilon = beta * np.std(y)
+            epsilon = beta * np.std(data_y)
             self.set_params(epsilon=epsilon)
 
         if hasattr(self, 'covmin') is False:
-            covmin = 1. / pow(X.shape[0], self.alpha)
+            covmin = 1. / pow(data_X.shape[0], self.alpha)
             self.set_params(covmin=covmin)
 
         if hasattr(self, 'nb_bucket') is False:
-            nb_bucket = max(10, int(np.sqrt(pow(X.shape[0],
-                                                1. / X.shape[1]))))
+            nb_bucket = max(10, int(np.sqrt(pow(data_X.shape[0],
+                                                1. / data_X.shape[1]))))
 
-            nb_bucket = min(nb_bucket, X.shape[0])
+            nb_bucket = min(nb_bucket, data_X.shape[0])
             self.set_params(nb_bucket=nb_bucket)
 
         if hasattr(self, 'covmax') is False:
@@ -1675,7 +1788,7 @@ class Learning(BaseEstimator):
             self.set_params(covmax=covmax)
 
         if hasattr(self, 'calcmethod') is False:
-            if len(set(y)) > 2:
+            if len(set(data_y)) > 2:
                 # Binary classification case
                 calcmethod = 'mse'
             else:
@@ -1683,7 +1796,7 @@ class Learning(BaseEstimator):
                 calcmethod = 'mae'
             self.set_params(calcmethod=calcmethod)
 
-        features_index = range(X.shape[1])
+        features_index = range(data_X.shape[1])
         if features_name is None:
             features_name = ['X' + str(i) for i in features_index]
 
@@ -1695,16 +1808,16 @@ class Learning(BaseEstimator):
             self.set_params(l_max=l_max)
 
         # Turn the matrix X in a discret matrix
-        X_discretized = self.discretize(X)
+        X_discretized = self.discretize(data_X)
         self.set_params(X=X_discretized)
 
         # Normalization of y
-        ymean = np.nanmean(y)
-        ystd = np.nanstd(y)
+        ymean = np.nanmean(data_y)
+        ystd = np.nanstd(data_y)
         self.set_params(ymean=ymean)
         self.set_params(ystd=ystd)
 
-        self.set_params(y=y)
+        self.set_params(y=data_y)
 
         # looking for good rules
         self.find_rules()  # works in columns not in lines
@@ -1919,7 +2032,8 @@ class Learning(BaseEstimator):
                           % str(len(insignificant_ruleset)))
 
                     insignificant_ruleset.sort_by('var', False)
-                    rg_add, selected_rs = self.select(insignificant_ruleset, selected_rs)
+                    rg_add, selected_rs = self.select(insignificant_ruleset,
+                                                      selected_rs)
                     print('Number insignificant rules added: %s' % str(rg_add))
                 else:
                     print('No insignificant rule added.')
@@ -1937,7 +2051,8 @@ class Learning(BaseEstimator):
                 #     id_feature = neg_rule.conditions.get_param('features_index')
                 #     rule_features = list(itemgetter(*id_feature)(features_name))
                 #     neg_rule.conditions.set_params(features_name=rule_features)
-                #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
+                #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
+                #     cov_max=1.0)
                 #     print('Add negative no-rule  %s.' % str(neg_rule))
                 #     selected_rs.append(neg_rule)
                 #
@@ -1945,7 +2060,8 @@ class Learning(BaseEstimator):
                 #     id_feature = pos_rule.conditions.get_param('features_index')
                 #     rule_features = list(itemgetter(*id_feature)(features_name))
                 #     pos_rule.conditions.set_params(features_name=rule_features)
-                #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0, cov_max=1.0)
+                #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
+                #     cov_max=1.0)
                 #     print('Add positive no-rule  %s.' % str(pos_rule))
                 #     selected_rs.append(pos_rule)
             else:
@@ -1998,7 +2114,8 @@ class Learning(BaseEstimator):
                     new_rules.union_test(activation_rs, gamma, x_train):
                 new_rs = copy.deepcopy(selected_rs)
                 new_rs.append(new_rules)
-                # new_criterion = calc_ruleset_crit(new_rs, y_train, x_train, calcmethod)
+                # new_criterion = calc_ruleset_crit(new_rs, y_train, x_train,
+                #                                   calcmethod)
 
                 selected_rs = copy.deepcopy(new_rs)
                 activation_rs = selected_rs.calc_activation(x_train)
@@ -2019,10 +2136,11 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        X : {array type or sparse matrix of shape = [n_samples, n_features]}
+        X : {array type or sparse matrix or DataFrame or Series
+             of shape = [n_samples, n_features]}
             The input samples. Internally, its dtype will be converted to
             ``dtype=np.float32``. If a spares matrix is provided, it will be
-            converted into a spares ``csr_matrix``.
+            converted into a sparse ``csr_matrix``.
 
         check_input : bool type
 
@@ -2031,15 +2149,22 @@ class Learning(BaseEstimator):
         y : {array type of shape = [n_samples]}
             The predicted values.
         """
+        
+        # TODO : if df or series, check index ?
+        data_x = X
+        if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
+            data_x = X.values
+        
         y_train = self.get_param('y')
         x_train = self.get_param('X')
 
-        X = self.validate_X_predict(X, check_input)
-        x_copy = self.discretize(X)
+        data_x = self.validate_X_predict(data_x, check_input)
+        x_copy = self.discretize(data_x)
 
         ruleset = self.get_param('selected_rs')
 
-        prediction_vector, bad_cells, no_rules = ruleset.predict(y_train, x_train, x_copy)
+        prediction_vector, bad_cells, no_rules = ruleset.predict(y_train, x_train,
+                                                                 x_copy)
 
         return np.array(prediction_vector), bad_cells, no_rules
 
@@ -2051,7 +2176,8 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        x : {array type or sparse matrix of shape = [n_samples, n_features]}
+        x : {array type or sparse matrix or DataFrame or Series
+             of shape = [n_samples, n_features]}
             Test samples.
 
         y : {array type of shape = [n_samples]}
@@ -2068,23 +2194,34 @@ class Learning(BaseEstimator):
         score : float
             Mean accuracy of self.predict(X) wrt. y in {0,1}
         """
-        x_copy = copy.copy(x)
+        
+        # TODO : if df or series, check index ?
+        data_x = x
+        data_y = y
+        if isinstance(x, pd.Series) or isinstance(x, pd.DataFrame):
+            data_x = x.values
+        x_copy = copy.copy(data_x)
 
+        if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+            data_y = y.values
+        data_y = copy.copy(y)
+        
         prediction_vector = self.predict(x_copy)
         prediction_vector = np.nan_to_num(prediction_vector)
 
-        nan_val = np.argwhere(np.isnan(y))
+        nan_val = np.argwhere(np.isnan(data_y))
         if len(nan_val) > 0:
             prediction_vector = np.delete(prediction_vector, nan_val)
-            y = np.delete(y, nan_val)
+            data_y = np.delete(data_y, nan_val)
 
-        if len(set(y)) == 2:
-            th_val = (min(y) + max(y)) / 2.0
-            prediction_vector = list(map(lambda p: min(y) if p < th_val else max(y),
-                                         prediction_vector))
-            return accuracy_score(y, prediction_vector)
+        if len(set(data_y)) == 2:
+            th_val = (min(data_y) + max(data_y)) / 2.0
+            prediction_vector = list(
+                map(lambda p: min(data_y) if p < th_val else max(data_y),
+                prediction_vector))
+            return accuracy_score(data_y, prediction_vector)
         else:
-            return r2_score(y, prediction_vector, sample_weight=sample_weight,
+            return r2_score(data_y, prediction_vector, sample_weight=sample_weight,
                             multioutput='variance_weighted')
 
     """------   Data functions   -----"""
@@ -2092,14 +2229,20 @@ class Learning(BaseEstimator):
         """
         Validate X whenever one tries to predict, apply, predict_proba
         """
+        # TODO : if df or series, check index ?
+        data_x = X
+        if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
+            data_x = X.values
+        
         if hasattr(self, 'fitted') is False:
             raise AttributeError("Estimator not fitted, "
                                  "call 'fit' before exploiting the model.")
 
         if check_input:
-            X = check_array(X, dtype=None, force_all_finite=False)  # type: np.ndarray
+            # type: np.ndarray
+            data_x = check_array(data_x, dtype=None, force_all_finite=False)
 
-            n_features = X.shape[1]
+            n_features = data_x.shape[1]
             input_features = self.get_param('features_name')
             if len(input_features) != n_features:
                 raise ValueError("Number of features of the model must "
@@ -2107,7 +2250,7 @@ class Learning(BaseEstimator):
                                  "input n_features is %s "
                                  % (input_features, n_features))
 
-        return X
+        return data_x
 
     def discretize(self, x):
         """
@@ -2116,7 +2259,7 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        x : {array, matrix type}, shape=[n_samples, n_features]
+        x : {array, matrix type} or DataFrame or Series, shape=[n_samples, n_features]
             Features matrix
 
         Return
@@ -2125,14 +2268,20 @@ class Learning(BaseEstimator):
               Features matrix with each features values discretized
               in nb_bucket values
         """
-        nb_col = x.shape[1]
+        
+        # TODO : if df or series, check index ?
+        data_x = x
+        if isinstance(x, pd.Series) or isinstance(x, pd.DataFrame):
+            data_x = x.values
+        
+        nb_col = data_x.shape[1]
         nb_bucket = self.get_param('nb_bucket')
         bins_dict = self.get_param('bins')
         features_name = self.get_param('features_name')
 
         x_mat = []
         for i in range(nb_col):
-            xcol = x[:, i]
+            xcol = data_x[:, i]
             try:
                 xcol = np.array(xcol.flat, dtype=np.float)
             except ValueError:
@@ -2260,11 +2409,12 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        x : {array-like, sparse matrix}, shape=[n_samples, n_features]
+        x : {array-like, sparse matrix or DataFrame or Series},
+             shape=[n_samples, n_features]
             Features matrix, where n_samples in the number of samples and
             n_features is the number of features.
 
-        y : {array-like}, shape=[n_samples]
+        y : {array-like or DataFrame or Series}, shape=[n_samples]
             Target vector relative to X
 
         var1 : {int type}
@@ -2288,6 +2438,13 @@ class Learning(BaseEstimator):
         -------
         Draw the graphic
         """
+        
+        # TODO : if df or series, check index ?
+        data_y = y
+        if isinstance(y, pd.Series) or isinstance(y, pd.DataFrame):
+            data_y = y.values
+        # No need for checking x type, it is done by self.discretize(x)
+        
         nb_bucket = self.get_param('nb_bucket')
         x_discretized = self.discretize(x)
         selected_rs = self.get_param('selected_rs')
@@ -2321,14 +2478,14 @@ class Learning(BaseEstimator):
             area = map(lambda b:
                        map(lambda a:
                            np.extract(np.logical_and(x1 == a, x2 == b),
-                                      y).mean(), range(nb_bucket)),
+                                      data_y).mean(), range(nb_bucket)),
                        range(nb_bucket))
             area = list(area)
 
             area_len = map(lambda b:
                            map(lambda a:
                                len(np.extract(np.logical_and(x1 == a, x2 == b),
-                                              y)) * 10, range(nb_bucket)),
+                                              data_y)) * 10, range(nb_bucket)),
                            range(nb_bucket))
             area_len = list(area_len)
 
@@ -2338,7 +2495,7 @@ class Learning(BaseEstimator):
         plt.title('RIPE prediction')
 
         if add_score:
-            score = self.score(x, y)
+            score = self.score(x, data_y)
             plt.text(nb_bucket - .70, .08, ('%.2f' % str(score)).lstrip('0'),
                      size=20, horizontalalignment='right')
 
@@ -2377,6 +2534,7 @@ class Learning(BaseEstimator):
         """
         Function plots a graphical correlation of rules.
         """
+        # No need to check x type, it is done in plot_dist()
         rs = self.get_param('selected_rs')
         if x is None and self.get_param('low_memory'):
             x = self.get_param('X')
