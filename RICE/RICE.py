@@ -255,7 +255,8 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method='MSE'):
     criterion : {float type}
            The value of the criteria for the method
     """
-    prediction_vector, bad_cells, no_rules = ruleset.calc_pred(y_train=y_train, x_train=x_train)
+    prediction_vector, bad_cells, no_rules = ruleset.calc_pred(y_train=y_train,
+                                                               x_train=x_train)
     criterion = calc_criterion(prediction_vector, y_train, method)
     return criterion
 
@@ -1880,7 +1881,8 @@ class Learning(BaseEstimator):
                 insignificant_list = filter(lambda rule: insignificant_test(rule, sigma,
                                                                             epsilon),
                                             sub_ruleset)
-                insignificant_list = list(filter(lambda rule: rule not in significant_list,
+                insignificant_list = list(filter(lambda rule:
+                                                 rule not in significant_list,
                                                  insignificant_list))
                 if len(list(insignificant_list)) > 0:
                     [rule.set_params(significant=False) for rule in insignificant_list]
