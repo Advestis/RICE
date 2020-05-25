@@ -14,79 +14,236 @@ def inter(rs):
     return sum(map(lambda r: r.length, rs))
 
 
-def extract_rules_from_tree(tree, features, xmin, xmax):
+def extract_rules_from_tree(tree,
+                            X_names,
+                            xmin, xmax,
+                            all_rules_list = None,
+                            print_visitor=False):
+    """
+    X_names are the list of X names.
+    In the tree ('dt' later in the code), the list of relevant Xs are represented
+    by their position in the list of Xs that was fed to the tree at learning.
+    So to access the name of the feature relevant for a given node in the tree,
+    one has first to do dt.feature[node] to access the feature index in X_names,
+    then do X_names[dt.feature[node]]
+    
+    xmin and xmax are Series.
+    Index is a X name, values are the min and the man value of the X for a given Y.
+    The Y was specified before calling this function so it does not appear here.
+    
+    If all_rules_list is not None, it will be appended with the extracted rules,
+    and nothing is returned. Else, returns the extracted rules
+    
+    Later in the code:
+    bmin is, for a given condition, the minimum value that X must have to be selected
+    By analogy, bmax is the max value.
+    
+    Hence bmax must always be >= to bmin, and bmin and bmax must be inside the interval
+    [xmin, xmax].
+    
+    When selecting Ys based on conditions, the criterion will be X > bmin and X <= bmax.
+    bmin is excluded and bmax included. So when creating bmin, if it is equal to bmin,
+    change it to be a bit less than xmin so that xmin will pass the criterion.
+    
+    In the tree, to each node corresponds a maximum value for the associated X (feature).
+    This is accessed by dt.threshold[node] and will be the bmax of one condition of a
+    rule.
+    
+    It will later be the bmin of one condition of the "opposite" rule. Indeed if there
+    is a condition saying something like 'If X < 3 then do that', there is also a
+    condition saying 'if X >= 3 then do this'.
+    
+    At the end there will be 2 rules per node. So not only the leaves give a rule, but
+    each branching in the tree.
+    Rules do not contain any value for Ys. Just conditions on Xs. RICE will set the
+    values in calc_stat.
+    
+    If print_visitor is specified, will return a string describing what happened step
+    by step
+    """
+    
+    # TODO : xmin and xmax are dicts idnex by feature names. Add the possibiliy
+    # to pass lists, and then fetch xmin content using feature positions
+    
+    visitor_output = ""
     dt = tree.tree_
+    visitor_output += "\nEntering tree"
     
     def visitor(node, depth, cond=None, rule_list=None):
+        visitor_output = ""
+        visitor_output += "\n\n\n" + " " * depth + f"Visiting Node {node}"
+        
         if rule_list is None:
             rule_list = []
-        if dt.feature[node] != _tree.TREE_UNDEFINED:
-            # If
-            new_cond = RICE.RuleConditions([features[dt.feature[node]]],
-                                           [dt.feature[node]],
-                                           bmin=[xmin[dt.feature[node]]],
-                                           bmax=[dt.threshold[node]],
-                                           xmin=[xmin[dt.feature[node]]],
-                                           xmax=[xmax[dt.feature[node]]])
-            if cond is not None:
-                if dt.feature[node] not in cond.features_index:
-                    conditions_list = list(map(lambda c1, c2: c1 + c2, cond.get_attr(),
-                                               new_cond.get_attr()))
-                    
-                    new_cond = RICE.RuleConditions(features_name=conditions_list[0],
-                                                   features_index=conditions_list[1],
-                                                   bmin=conditions_list[2],
-                                                   bmax=conditions_list[3],
-                                                   xmax=conditions_list[5],
-                                                   xmin=conditions_list[4])
-                else:
-                    new_bmax = dt.threshold[node]
-                    new_cond = copy.deepcopy(cond)
-                    place = cond.features_index.index(dt.feature[node])
-                    new_cond.bmax[place] = min(new_bmax, new_cond.bmax[place])
-            
-            # print (RICE.Rule(new_cond))
-            new_rg = RICE.Rule(copy.deepcopy(new_cond))
-            rule_list.append(new_rg)
-            
-            rule_list = visitor(dt.children_left[node], depth + 1,
-                                new_cond, rule_list)
-            
-            # Else
-            new_cond = RICE.RuleConditions([features[dt.feature[node]]],
-                                           [dt.feature[node]],
-                                           bmin=[dt.threshold[node]],
-                                           bmax=[xmax[dt.feature[node]]],
-                                           xmin=[xmin[dt.feature[node]]],
-                                           xmax=[xmax[dt.feature[node]]])
-            if cond is not None:
-                if dt.feature[node] not in cond.features_index:
-                    conditions_list = list(map(lambda c1, c2: c1 + c2, cond.get_attr(),
-                                               new_cond.get_attr()))
-                    new_cond = RICE.RuleConditions(features_name=conditions_list[0],
-                                                   features_index=conditions_list[1],
-                                                   bmin=conditions_list[2],
-                                                   bmax=conditions_list[3],
-                                                   xmax=conditions_list[5],
-                                                   xmin=conditions_list[4])
-                else:
-                    new_bmin = dt.threshold[node]
-                    new_bmax = xmax[dt.feature[node]]
-                    new_cond = copy.deepcopy(cond)
-                    place = new_cond.features_index.index(dt.feature[node])
-                    new_cond.bmin[place] = max(new_bmin, new_cond.bmin[place])
-                    new_cond.bmax[place] = max(new_bmax, new_cond.bmax[place])
-            
-            # print (RICE.Rule(new_cond))
-            new_rg = RICE.Rule(copy.deepcopy(new_cond))
-            rule_list.append(new_rg)
-            
-            rule_list = visitor(dt.children_right[node], depth + 1, new_cond, rule_list)
         
-        return rule_list
+        Xi = dt.feature[node]
+        
+        if Xi == _tree.TREE_UNDEFINED:
+            visitor_output += "\n" + " " * depth + "End of branch"
+            visitor_output += "\n" + " " * depth + f"rule list:\n{rule_list}"
+            return rule_list, visitor_output
+        
+        x_name = X_names[Xi]
+        node_thresh = dt.threshold[node]
+        
+        visitor_output += "\n" + " " * depth + "X: {}".format(x_name)
+        visitor_output += "\n" + " " * depth + "Xmin: {}".format(xmin[x_name])
+        visitor_output += "\n" + " " * depth + "Xmax: {}".format(xmax[x_name])
+        visitor_output += "\n" + " " * depth + "Xi: {}".format(Xi)
+        visitor_output += "\n" + " " * depth + "Threshold:{}".format(node_thresh)
+        if [xmin[x_name]] > [node_thresh]:
+            visitor_output += "\n" + " " * depth + "xmin is greater than threshold"
+            visitor_output += "\n" + " " * depth + "rule list:\n{}".format(rule_list)
+            return rule_list, visitor_output
+        
+        visitor_output += "\n\n" + " " * depth + "Creating <- child rule."
+        # New list of conditions containing only the condition for the current
+        # node.
+        # When selecting Ys based on conditions, the criterion will be
+        # X > bmin and X <= bmax. bmin is excluded and bmax included.
+        # So when creating bmin, if it is equal to xmin, change it to be a bit
+        # less than xmin so that xmin will pass the criterion.
+        bmin = xmin[x_name]
+        if bmin == 0:
+            bmin -= 1e-6
+        else:
+            if bmin > 0:
+                bmin = 0.99 * bmin
+            else:
+                bmin = 1.01 * bmin
+        
+        new_cond = RICE.RuleConditions([x_name],
+                                       [Xi],
+                                       bmin=[bmin],
+                                       bmax=[node_thresh],
+                                       xmin=[xmin[x_name]],
+                                       xmax=[xmax[x_name]])
+        
+        # If cond is not None, means we are not at the first node,
+        # so need to expand the list of conditions, unless the current X is
+        # already in our list of conditions. In that case, update the
+        # corresponding condition by setting its bmax to be the min of the
+        # current and new thresh.olds
+        if cond is not None:
+            if Xi not in cond.features_index:
+                visitor_output += (
+                    "\n\n" + " " * depth + f"Adding Xi {Xi} (left) to currrent"
+                    + " conditions")
+                # Will concatenate current condition list and new conditions by their
+                # attributes (which are lists)
+                conditions_list = list(map(lambda c1, c2: c1 + c2, cond.get_attr(),
+                                           new_cond.get_attr()))
+                
+                new_cond = RICE.RuleConditions(features_name=conditions_list[0],
+                                               features_index=conditions_list[1],
+                                               bmin=conditions_list[2],
+                                               bmax=conditions_list[3],
+                                               xmin=conditions_list[4],
+                                               xmax=conditions_list[5])
+            else:
+                visitor_output += (
+                    "\n\n" + " " * depth + f"Modifying Xi {Xi} (left) in"
+                    " currrent conditions:")
+                new_bmax = node_thresh
+                new_cond = copy.deepcopy(cond)
+                place = cond.features_index.index(Xi)
+                visitor_output += (
+                    "\n" + " " * depth
+                    + f"Previous bmax: {new_cond.bmax[place]}")
+                visitor_output += (
+                    "\n" + " " * depth + f"New bmax: {new_bmax}")
+                new_cond.bmax[place] = min(new_bmax, new_cond.bmax[place])
+                visitor_output += (
+                    "\n" + " " * depth + f"kept: {new_cond.bmax[place]}")
+        
+        # Create a new Rule with all the condition and append it to the rules
+        # list. So the rule list is actually a history of how one rule evolved.
+        new_rg = RICE.Rule(copy.deepcopy(new_cond))
+        visitor_output += "\n\n" + " " * depth + f"New rule: {new_rg}"
+        rule_list.append(new_rg)
+        
+        # Execute the current function on the left of the current node
+        # (the "True" side)
+        visitor_output += "\n\n" + " " * depth + "Going to <- next node"
+        rule_list, vo = visitor(dt.children_left[node], depth + 1,
+                                new_cond, rule_list)
+        # At this point, any rule found on the left of the current node will be
+        # in rules list and new_cond will contain the corresponding conditions.
+        
+        # Create a new condition corresponding to the opposite of the current
+        # node's threshold, i.e bmin is now the previous bmax
+        # Here we do not have to alter bmin, because we explicitely want
+        # node_thresh to not pass the criterion since it must have passed it
+        # for the opposite condition.
+        visitor_output += "\n\n" + " " * depth + "Creating right child rule."
+        new_cond = RICE.RuleConditions([x_name],
+                                       [Xi],
+                                       bmin=[node_thresh],
+                                       bmax=[xmax[x_name]],
+                                       xmin=[xmin[x_name]],
+                                       xmax=[xmax[x_name]])
+        # Means we are not at first node. Same logic as previously, except this time
+        # if Xi is in the list of features then the new bmin is now the threshold
+        # and bmax is modified to be the X maximum. Then keep the max of current
+        # and new bmin as bmin, same for bmax.
+        # TODO there is something weird here, for Xi will necessarily be in cond, since
+        # it was added at the very beginning of the function.
+        if cond is not None:
+            if Xi not in cond.features_index:
+                visitor_output += (
+                    "\n\n" + " " * depth + f"Adding Xi {Xi} (right) to currrent"
+                    " conditions")
+                conditions_list = list(map(lambda c1, c2: c1 + c2, cond.get_attr(),
+                                           new_cond.get_attr()))
+                new_cond = RICE.RuleConditions(features_name=conditions_list[0],
+                                               features_index=conditions_list[1],
+                                               bmin=conditions_list[2],
+                                               bmax=conditions_list[3],
+                                               xmin=conditions_list[4],
+                                               xmax=conditions_list[5])
+            else:
+                visitor_output += ("\n\n" + " " * depth
+                                   + f"Modifying Xi {Xi} (right) in currrent"
+                                   " conditions:")
+                new_bmin = node_thresh
+                new_bmax = xmax[x_name]
+                new_cond = copy.deepcopy(cond)
+                place = new_cond.features_index.index(Xi)
+                new_cond.bmin[place] = max(new_bmin, new_cond.bmin[place])
+                new_cond.bmax[place] = max(new_bmax, new_cond.bmax[place])
+        
+        # Create the rule for the right side of the node then apply this
+        # function on the right side of the node
+        new_rg = RICE.Rule(copy.deepcopy(new_cond))
+        rule_list.append(new_rg)
+        
+        visitor_output += "\n\n" + " " * depth + "Going to -> next node"
+        rule_list, vo = visitor(dt.children_right[node], depth + 1,
+                                new_cond, rule_list)
+        visitor_output += vo
+        visitor_output += "\n" + " " * depth + f"rule list:\n{rule_list}"
+        return rule_list, visitor_output
     
-    rule_list = visitor(0, 1)
-    return rule_list
+    visitor_output += "\nFirst call to visitor"
+    rule_list, vo = visitor(0, 1)
+    visitor_output += vo
+    # In the end there are 2 rules per node. So not only the leaves give a rule,
+    # but each branching in the tree.
+    # Rules do not contain any value for Ys. Just conditions on X. RICE will
+    # set the values in calc_stat.
+    if all_rules_list is not None:
+        all_rules_list += rule_list
+        visitor_output += "\nfinal rule list:\n{all_rules_list}"
+        visitor_output += "\nLeaving tree"
+        if print_visitor:
+            return visitor_output
+        else:
+            return
+    else:
+        if print_visitor:
+            return rule_list, visitor_output
+        else:
+            return rule_list
 
 
 def extract_rules_rulefit(rules, features, bmin_list, bmax_list):
