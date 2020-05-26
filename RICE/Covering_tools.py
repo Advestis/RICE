@@ -65,6 +65,11 @@ def extract_rules_from_tree(tree,
     # TODO : xmin and xmax are dicts idnex by feature names. Add the possibiliy
     # to pass lists, and then fetch xmin content using feature positions
     
+    if not isinstance(xmin, pd.Series) and not isinstance(xmin, pd.DataFrame):
+        xmin = pd.Series(data=xmin, index=X_names)
+    if not isinstance(xmax, pd.Series) and not isinstance(xmax, pd.DataFrame):
+        xmax = pd.Series(data=xmax, index=X_names)
+    
     visitor_output = ""
     dt = tree.tree_
     visitor_output += "\nEntering tree"
