@@ -772,7 +772,7 @@ class RuleConditions(object):
 
     def transform(self, X):
         """
-        Transform a matrix xmat into an activation vector.
+        Transforms a matrix xmat into an activation vector.
         It means an array of 0 and 1. 0 if the condition is not
         satisfied and 1 otherwise.
 
@@ -1500,6 +1500,7 @@ class RuleSet(object):
         activation_vector = [rule.get_activation(x) for rule in self]
         activation_vector = np.sum(activation_vector, axis=0)
         activation_vector = 1 * activation_vector.astype('bool')
+        self.activation = activation_vector
 
         return activation_vector
 
@@ -1660,6 +1661,15 @@ class RuleSet(object):
         To get the list of rule in self
         """
         return self.rules
+
+
+    def get_activation(self, x=None):
+        """
+        To get the activation vector of all rules in self
+        """
+        if self.activation is None or x is not None:
+            self.calc_activation(x)
+        return self.activation
 
     """------   Setters   -----"""
     def set_rules(self, rules_list):

@@ -62,9 +62,6 @@ def extract_rules_from_tree(tree,
     by step
     """
     
-    # TODO : xmin and xmax are dicts idnex by feature names. Add the possibiliy
-    # to pass lists, and then fetch xmin content using feature positions
-    
     if not isinstance(xmin, pd.Series) and not isinstance(xmin, pd.DataFrame):
         xmin = pd.Series(data=xmin, index=X_names)
     if not isinstance(xmax, pd.Series) and not isinstance(xmax, pd.DataFrame):
@@ -741,8 +738,8 @@ def change_rs(rs, bins, xmax, xmin):
                     else:
                         bmax[i] = xmax[1]
                 i += 1
-                
-                
+
+
 def plot_rules(selected_rs, ymax, ymin,
                xmax, xmin, var1, var2,
                cm=plt.cm.RdBu, cp=None):
