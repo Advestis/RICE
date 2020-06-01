@@ -109,3 +109,4 @@ venv.bak/
 # Flake8 tests
 RICE/flake_test.sh
 RICE/test_result.txt
+.idea/
