@@ -1,31 +1,35 @@
-import numpy as np
 import copy
 import math
+
+import numpy as np
+import pandas as pd
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
 from operator import itemgetter
 from sklearn.tree import _tree
-import matplotlib
-import matplotlib.pyplot as plt
 from matplotlib import patches
 
 import RICE
 
 
 def inter(rs):
+    # TODO : as Vincent what it does
     return sum(map(lambda r: r.length, rs))
 
 
 def extract_rules_from_tree(tree,
-                            X_names,
+                            x_names,
                             xmin, xmax,
-                            all_rules_list = None,
+                            all_rules_list=None,
                             print_visitor=False):
     """
-    X_names are the list of X names.
+    x_names are the list of X names.
     In the tree ('dt' later in the code), the list of relevant Xs are represented
     by their position in the list of Xs that was fed to the tree at learning.
     So to access the name of the feature relevant for a given node in the tree,
-    one has first to do dt.feature[node] to access the feature index in X_names,
-    then do X_names[dt.feature[node]]
+    one has first to do dt.feature[node] to access the feature index in x_names,
+    then do x_names[dt.feature[node]]
     
     xmin and xmax are Series.
     Index is a X name, values are the min and the man value of the X for a given Y.
@@ -63,42 +67,41 @@ def extract_rules_from_tree(tree,
     """
     
     if not isinstance(xmin, pd.Series) and not isinstance(xmin, pd.DataFrame):
-        xmin = pd.Series(data=xmin, index=X_names)
+        xmin = pd.Series(data=xmin, index=x_names)
     if not isinstance(xmax, pd.Series) and not isinstance(xmax, pd.DataFrame):
-        xmax = pd.Series(data=xmax, index=X_names)
+        xmax = pd.Series(data=xmax, index=x_names)
     
     visitor_output = ""
     dt = tree.tree_
     visitor_output += "\nEntering tree"
     
-    def visitor(node, depth, cond=None, rule_list=None):
-        visitor_output = ""
-        visitor_output += "\n\n\n" + " " * depth + f"Visiting Node {node}"
+    def visitor(node, depth, cond=None, rl=None):
+        vo = "\n\n\n" + " " * depth + f"Visiting Node {node}"
         
-        if rule_list is None:
-            rule_list = []
+        if rl is None:
+            rl = []
         
-        Xi = dt.feature[node]
+        xi = dt.feature[node]
         
-        if Xi == _tree.TREE_UNDEFINED:
-            visitor_output += "\n" + " " * depth + "End of branch"
-            visitor_output += "\n" + " " * depth + f"rule list:\n{rule_list}"
-            return rule_list, visitor_output
+        if xi == _tree.TREE_UNDEFINED:
+            vo += "\n" + " " * depth + "End of branch"
+            vo += "\n" + " " * depth + f"rule list:\n{rl}"
+            return rl, vo
         
-        x_name = X_names[Xi]
+        x_name = x_names[xi]
         node_thresh = dt.threshold[node]
         
-        visitor_output += "\n" + " " * depth + "X: {}".format(x_name)
-        visitor_output += "\n" + " " * depth + "Xmin: {}".format(xmin[x_name])
-        visitor_output += "\n" + " " * depth + "Xmax: {}".format(xmax[x_name])
-        visitor_output += "\n" + " " * depth + "Xi: {}".format(Xi)
-        visitor_output += "\n" + " " * depth + "Threshold:{}".format(node_thresh)
+        vo += "\n" + " " * depth + "X: {}".format(x_name)
+        vo += "\n" + " " * depth + "Xmin: {}".format(xmin[x_name])
+        vo += "\n" + " " * depth + "Xmax: {}".format(xmax[x_name])
+        vo += "\n" + " " * depth + "Xi: {}".format(xi)
+        vo += "\n" + " " * depth + "Threshold:{}".format(node_thresh)
         if [xmin[x_name]] > [node_thresh]:
-            visitor_output += "\n" + " " * depth + "xmin is greater than threshold"
-            visitor_output += "\n" + " " * depth + "rule list:\n{}".format(rule_list)
-            return rule_list, visitor_output
+            vo += "\n" + " " * depth + "xmin is greater than threshold"
+            vo += "\n" + " " * depth + "rule list:\n{}".format(rl)
+            return rl, vo
         
-        visitor_output += "\n\n" + " " * depth + "Creating <- child rule."
+        vo += "\n\n" + " " * depth + "Creating <- child rule."
         # New list of conditions containing only the condition for the current
         # node.
         # When selecting Ys based on conditions, the criterion will be
@@ -115,7 +118,7 @@ def extract_rules_from_tree(tree,
                 bmin = 1.01 * bmin
         
         new_cond = RICE.RuleConditions([x_name],
-                                       [Xi],
+                                       [xi],
                                        bmin=[bmin],
                                        bmax=[node_thresh],
                                        xmin=[xmin[x_name]],
@@ -127,9 +130,9 @@ def extract_rules_from_tree(tree,
         # corresponding condition by setting its bmax to be the min of the
         # current and new thresh.olds
         if cond is not None:
-            if Xi not in cond.features_index:
-                visitor_output += (
-                    "\n\n" + " " * depth + f"Adding Xi {Xi} (left) to currrent"
+            if xi not in cond.features_index:
+                vo += (
+                    "\n\n" + " " * depth + f"Adding Xi {xi} (left) to current"
                     + " conditions")
                 # Will concatenate current condition list and new conditions by their
                 # attributes (which are lists)
@@ -143,43 +146,42 @@ def extract_rules_from_tree(tree,
                                                xmin=conditions_list[4],
                                                xmax=conditions_list[5])
             else:
-                visitor_output += (
-                    "\n\n" + " " * depth + f"Modifying Xi {Xi} (left) in"
-                    " currrent conditions:")
+                vo += (
+                    "\n\n" + " " * depth + f"Modifying Xi {xi} (left) in"
+                    " current conditions:")
                 new_bmax = node_thresh
                 new_cond = copy.deepcopy(cond)
-                place = cond.features_index.index(Xi)
-                visitor_output += (
+                place = cond.features_index.index(xi)
+                vo += (
                     "\n" + " " * depth
                     + f"Previous bmax: {new_cond.bmax[place]}")
-                visitor_output += (
+                vo += (
                     "\n" + " " * depth + f"New bmax: {new_bmax}")
                 new_cond.bmax[place] = min(new_bmax, new_cond.bmax[place])
-                visitor_output += (
+                vo += (
                     "\n" + " " * depth + f"kept: {new_cond.bmax[place]}")
         
         # Create a new Rule with all the condition and append it to the rules
         # list. So the rule list is actually a history of how one rule evolved.
         new_rg = RICE.Rule(copy.deepcopy(new_cond))
-        visitor_output += "\n\n" + " " * depth + f"New rule: {new_rg}"
-        rule_list.append(new_rg)
+        vo += "\n\n" + " " * depth + f"New rule: {new_rg}"
+        rl.append(new_rg)
         
         # Execute the current function on the left of the current node
         # (the "True" side)
-        visitor_output += "\n\n" + " " * depth + "Going to <- next node"
-        rule_list, vo = visitor(dt.children_left[node], depth + 1,
-                                new_cond, rule_list)
+        vo += "\n\n" + " " * depth + "Going to <- next node"
+        rl, vo = visitor(dt.children_left[node], depth + 1, new_cond, rl)
         # At this point, any rule found on the left of the current node will be
         # in rules list and new_cond will contain the corresponding conditions.
         
         # Create a new condition corresponding to the opposite of the current
         # node's threshold, i.e bmin is now the previous bmax
-        # Here we do not have to alter bmin, because we explicitely want
+        # Here we do not have to alter bmin, because we explicitly want
         # node_thresh to not pass the criterion since it must have passed it
         # for the opposite condition.
-        visitor_output += "\n\n" + " " * depth + "Creating right child rule."
+        vo += "\n\n" + " " * depth + "Creating right child rule."
         new_cond = RICE.RuleConditions([x_name],
-                                       [Xi],
+                                       [xi],
                                        bmin=[node_thresh],
                                        bmax=[xmax[x_name]],
                                        xmin=[xmin[x_name]],
@@ -191,9 +193,9 @@ def extract_rules_from_tree(tree,
         # TODO there is something weird here, for Xi will necessarily be in cond, since
         # it was added at the very beginning of the function.
         if cond is not None:
-            if Xi not in cond.features_index:
-                visitor_output += (
-                    "\n\n" + " " * depth + f"Adding Xi {Xi} (right) to currrent"
+            if xi not in cond.features_index:
+                vo += (
+                    "\n\n" + " " * depth + f"Adding Xi {xi} (right) to current"
                     " conditions")
                 conditions_list = list(map(lambda c1, c2: c1 + c2, cond.get_attr(),
                                            new_cond.get_attr()))
@@ -204,31 +206,31 @@ def extract_rules_from_tree(tree,
                                                xmin=conditions_list[4],
                                                xmax=conditions_list[5])
             else:
-                visitor_output += ("\n\n" + " " * depth
-                                   + f"Modifying Xi {Xi} (right) in currrent"
-                                   " conditions:")
+                vo += ("\n\n" + " " * depth
+                       + f"Modifying Xi {xi} (right) in current"
+                       " conditions:")
                 new_bmin = node_thresh
                 new_bmax = xmax[x_name]
                 new_cond = copy.deepcopy(cond)
-                place = new_cond.features_index.index(Xi)
+                place = new_cond.features_index.index(xi)
                 new_cond.bmin[place] = max(new_bmin, new_cond.bmin[place])
                 new_cond.bmax[place] = max(new_bmax, new_cond.bmax[place])
         
         # Create the rule for the right side of the node then apply this
         # function on the right side of the node
         new_rg = RICE.Rule(copy.deepcopy(new_cond))
-        rule_list.append(new_rg)
+        rl.append(new_rg)
         
-        visitor_output += "\n\n" + " " * depth + "Going to -> next node"
-        rule_list, vo = visitor(dt.children_right[node], depth + 1,
-                                new_cond, rule_list)
-        visitor_output += vo
-        visitor_output += "\n" + " " * depth + f"rule list:\n{rule_list}"
-        return rule_list, visitor_output
+        vo += "\n\n" + " " * depth + "Going to -> next node"
+        rl, vo = visitor(dt.children_right[node], depth + 1,
+                         new_cond, rl)
+        vo += vo
+        vo += "\n" + " " * depth + f"rule list:\n{rl}"
+        return rl, vo
     
     visitor_output += "\nFirst call to visitor"
-    rule_list, vo = visitor(0, 1)
-    visitor_output += vo
+    rule_list, vis_out = visitor(0, 1)
+    visitor_output += vis_out
     # In the end there are 2 rules per node. So not only the leaves give a rule,
     # but each branching in the tree.
     # Rules do not contain any value for Ys. Just conditions on X. RICE will
@@ -798,12 +800,12 @@ def plot_rules(selected_rs, ymax, ymin,
             hatch = '/'
             alpha = (rg.get_param('pred') / ymax)
             idx = int(nb_color / 2 + alpha * nb_color / 2) + 1
-            facecolor = matplotlib.colors.rgb2hex(cm(idx))
+            facecolor = mpl.colors.rgb2hex(cm(idx))
         else:
             hatch = '\\'
             alpha = (rg.get_param('pred') / ymin)
             idx = int(nb_color / 2 - alpha * nb_color / 2) + 1
-            facecolor = matplotlib.colors.rgb2hex(cm(idx))
+            facecolor = mpl.colors.rgb2hex(cm(idx))
         
         if cp_rg == 1:
             if var[0] == var1:
