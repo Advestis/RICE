@@ -466,9 +466,12 @@ class Rule(object):
             return None
 
     def union_test(self, activation, gamma=0.80, x=None):
+        # TODO use in IMORA
         """
         Test to know if a rule (self) and an activation vector have
         at more gamma percent of points in common
+
+        If True, to add to ruleset. Else, discard.
         """
 
         # No need to check X type, it is done in get_activation()
@@ -742,7 +745,7 @@ class Rule(object):
                 multioutput="variance_weighted",
             )
 
-    def make_name(self, num: int, learning: Learning = None):
+    def make_name(self, num: int, learning: "Learning" = None):
         """
         Add an attribute name to self
 
@@ -1794,6 +1797,7 @@ class Learning(BaseEstimator):
         return selected_rs
 
     def select(self, rs, selected_rs=None):
+        # TODO extract important lines for IMORA
         # y_train = self.get_param('y')
         # calcmethod = self.get_param('calcmethod')
         # crit_evo = self.get_param('critlist')
