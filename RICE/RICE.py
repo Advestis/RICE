@@ -1363,6 +1363,19 @@ class RuleSet(object):
 
         self.rules = rules_list
 
+    """------   Setters   -----"""
+
+    def set_params(self, **parameters):
+        """
+        To set a new parameter
+        Example:
+        --------
+        o.set_params(new_param=val_new_param)
+        """
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
+
 
 """
 ---------
