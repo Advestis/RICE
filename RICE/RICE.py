@@ -135,7 +135,8 @@ class RuleConditions(object):
         return hash(to_hash)
 
     def check_index(self, ind: List):
-        """ Check if content of ind matches content of self.feature_names. Order does not matter.
+        """ Check if content of ind matches content of self.feature_names.
+        Order does not matter.
 
         Parameters
         ----------
@@ -163,12 +164,11 @@ class RuleConditions(object):
             raise ValueError(to_raise)
 
     def order_index(self, x: pd.DataFrame):
-        """ Order x's columns according to self features_index and features_names, assuming x's columns are features
+        """ Order x's columns according to self features_index and
+        features_names, assuming x's columns are features
 
-        Parameters
-        ----------
-        x : pd.DataFrame
-            x data to sort the columns of. shape=[n, d], so index is date and columns is features names
+        Parameters ---------- x : pd.DataFrame x data to sort the columns
+        of. shape=[n, d], so index is date and columns is features names
 
         Returns
         -------
@@ -176,7 +176,7 @@ class RuleConditions(object):
             Operates in-place
         """
 
-        self.check_index(x.columns.to_list())
+        self.check_index(list(x.columns))
         x.columns = self.features_name
 
     def transform(self, x: Union[np.ndarray, pd.Series, pd.DataFrame]):
@@ -190,10 +190,9 @@ class RuleConditions(object):
         x: Union[np.ndarray, pd.Series, pd.DataFrame]
             Input data. shape=[n, d] or shape=[n, d, m] (if DataFrame)
 
-        Returns
-        -------
-        activation_vector: Union[np.array, pd.Series]
-            The activation vector, shape=n or shape=[n, m] if x is DataFrame. Multi-Indexed in that case.
+        Returns ------- activation_vector: Union[np.array, pd.Series] The
+        activation vector, shape=n or shape=[n, m] if x is DataFrame.
+        Multi-Indexed in that case.
         """
 
         if isinstance(x, np.ndarray):
@@ -203,7 +202,8 @@ class RuleConditions(object):
             # Return is a Series of shape n
             return self.transform_series(x)
         elif isinstance(x.index, pd.DataFrame):
-            # Return is a Multi-indexed Series if shape [n, m] (n dates and m Ys)
+            # Return is a Multi-indexed Series if shape [n, m] (n dates and
+            # m Ys)
             return self.transform_dataframe(x)
         else:
             raise ValueError(f"Unknown type for x: {type(x)}")
@@ -293,14 +293,16 @@ class RuleConditions(object):
 
         Parameters
         ----------
-        x: pd.DataFrame
-            Input data. Multi-indexed. Index shape=[n, d], columns shape=[m]. So multiindexed by date-features names,
-            and columns are y names
+        x: pd.DataFrame Input data.
+            Multi-indexed. Index shape=[n, d], columns shape=[m]. So
+            multiindexed by date-features names, and columns are y names
 
         Returns
         -------
         activation_vector: pd.Series
-            The activation vector. Index shape=[n, m]. So indexed by dates-Y names
+            The activation vector. Index shape=[n, m]. So indexed by dates-Y
+             names
+
         """
 
         dates = list(set(x.index.get_level_values(0)))
@@ -399,10 +401,13 @@ class Rule(object):
         return hash(self.conditions)
 
     def pretty_print(self):
-        s = f"{self.get_param('name')} (pred={str(round(self.get_param('prediction'), 2))})\\\\"
-        for x, bmin, bmax in zip(self.conditions.features_name,
-                                 self.conditions.bmin,
-                                 self.conditions.bmax):
+        s = f"{self.get_param('name')} (" \
+            f"pred={str(round(self.get_param('prediction'), 2))})\\\\"
+        for x, bmin, bmax in zip(
+            self.conditions.features_name,
+            self.conditions.bmin,
+            self.conditions.bmax,
+        ):
             s += f"${x} \\in ]{str(bmin)},{str(bmax)}]$ \\\\"
         return s
 
@@ -551,35 +556,43 @@ class Rule(object):
 
         Parameters
         ----------
-        x: Union[np.ndarray, pd.DataFrame, pd.Series],
+
+        x: Union[np.ndarray, pd.DataFrame, pd.Series]
             The training input samples, shape = [n, d].
-        y: Union[np.ndarray, pd.DataFrame, pd.Series],
+
+        y: Union[np.ndarray, pd.DataFrame, pd.Series]
             The normalized target values, shape = [n].
+
         method: str
             The method mse_function or msecriterion. Default "mse".
-        cov_min: float,
+
+        cov_min: float
             The minimal coverage of one rule. Default 0.01.
+
         cov_max: float
             The maximal coverage of one rule. Default 0.5.
+
         low_memory: bool
             To save activation vectors of rules. Default False.
+
         first_selection: bool
-            If True, computes activation vector and coverage,
-            check cov conditions and returns.
-            If False, computes all other stats too (prediction, prediction vec, and mse).
-            Will call itself with first_selection True if calc_stats had not
-            been called already on this rule with first_selection True.
+            If True, computes activation vector and
+            coverage, check cov conditions and returns. If False, computes all
+            other stats too (prediction, prediction vec, and mse). Will call
+            itself with first_selection True if calc_stats had not been called
+            already on this rule with first_selection True.
 
         Return
         ------
-        None : if the rule does not verified coverage conditions
+        None
         """
 
         dtype = y.dtype
         if first_selection:
             self.set_params(first_selected=True)
             self.set_params(out=False)
-            # activation_vector is a np.array or a pd.Series, possibly multi-indexed
+            # activation_vector is a np.array or a pd.Series, possibly
+            # multi-indexed
             activation_vector = self.calc_activation(x=x)
 
             if sum(activation_vector) <= 0:
@@ -611,7 +624,8 @@ class Rule(object):
 
             if (
                 low_memory is True
-            ):  # In that case, calling with first_selection True did not save activation vector.
+            ):  # In that case, calling with first_selection True did not
+                # save activation vector.
                 activation_vector = self.calc_activation(x)
             else:
                 activation_vector = self.get_param("activation")
@@ -626,8 +640,8 @@ class Rule(object):
             cond_var = calc_variance(activation_vector, y)
             self.set_params(var=cond_var)
 
-            # If Ys are binned, their values are integer, but means will be floats
-            # Round then cast predictions to integer in that case.
+            # If Ys are binned, their values are integer, but means will be
+            # floats Round then cast predictions to integer in that case.
             if dtype == int:
                 prediction = int(np.round(prediction, 0))
                 complementary_prediction = int(
@@ -647,9 +661,9 @@ class Rule(object):
                     prediction_vector == 0
                 ] = complementary_prediction
 
-            # The final prediction vector is as follows :
-            # At each Ys activated by the rule, is the mean of all those Ys.
-            # At each Ys NOT activated by the rule, is the mean of all those Ys.
+            # The final prediction vector is as follows : At each Ys
+            # activated by the rule, is the mean of all those Ys. At each Ys
+            # NOT activated by the rule, is the mean of all those Ys.
 
             # Criterion is an evaluation of the goodness of prediction
             rez = calc_criterion(prediction_vector, y, method)
@@ -668,15 +682,14 @@ class Rule(object):
         Parameters
         ----------
         x : Union[np.array, pd.Series, pd.DataFrame]
-            Features. Shape = [n, d] or shape = [n, d, m] (can be Multi-indexed).
-            Default None
+            Features. Shape = [n, d] or shape = [n, d, m]
+            (can be Multi-indexed) (Default value = None)
 
         Returns
         -------
-
         np.array or pd.Series
-            Prediction vector.
-            shape = [n, d] (can be Multi-indexed)
+            Prediction vector. Shape = [n, d] (can be Multi-indexed)
+
         """
         # No need to check x type, it is done in calc_activation()
         prediction = self.get_param("pred")
@@ -695,17 +708,18 @@ class Rule(object):
 
         Parameters
         ----------
-        x : array-like or DataFrame or Series, shape = (n_samples, n_features)
-            Test samples.
+        x: Union[array-like, pd.DataFrame, pd.Series]
+            shape = (n_samples, n_features). Test samples.
 
-        y : array-like or DataFrame or Series,
-            shape = (n_samples) or (n_samples, n_outputs)
+        y: Union[array-like, pd.DataFrame, pd.Series]
+            shape = (n_samples) or (n_samples, n_outputs).
             True values for X.
 
-        sample_weight : array-like, shape = [n_samples], optional
+        sample_weight: array-like
+            shape = [n_samples], optional
             Sample weights.
 
-        score_type : string-type
+        score_type: str
 
         Returns
         -------
@@ -725,7 +739,7 @@ class Rule(object):
             data_y = y.values
 
         data_y = np.extract(np.isfinite(data_y), data_y)
-        prediction_vector = np.extract(np.isfinite(y), prediction_vector)
+        prediction_vector = np.extract(np.isfinite(data_y), prediction_vector)
 
         if score_type == "Classification":
             th_val = (min(y) + max(y)) / 2.0
@@ -845,6 +859,7 @@ class RuleSet(object):
     """
 
     def __init__(self, rs):
+        self.activation = None
         if type(rs) in [list, np.ndarray]:
             self.rules = rs
         elif type(rs) == RuleSet:
@@ -1075,7 +1090,8 @@ class RuleSet(object):
             dtype="int",
         )
 
-        # Calculation of the binary vector for cells of the partition et each row
+        # Calculation of the binary vector for cells of the partition et
+        # each row
         cells = (dot_activation - no_activation_vector) > 0
 
         # Calculation of the expectation of the complementary
@@ -1105,17 +1121,22 @@ class RuleSet(object):
 
         return prediction_vector, bad_cells, empty_cells
 
-    def calc_activation(self, x: Union[np.ndarray, pd.Series, pd.DataFrame] = None, low_memory: bool = True):
+    def calc_activation(
+        self,
+        x: Union[np.ndarray, pd.Series, pd.DataFrame] = None,
+        low_memory: bool = True,
+    ):
         """ Compute the  activation vector of a set of rules
 
         Parameters
         ----------
-        x : Union[np.ndarray, pd.Series, pd.DataFrame]
-            An optionnal feature matrix on which the activation vector is computed.
-            If not specified, use the already computed activation vectors or the rules.
-            Shape=[n, d] or [n, d, m]. Default None.
+        x: Union[np.ndarray, pd.Series, pd.DataFrame]
+            An optionnal feature matrix on which the activation vector is
+            computed. If not specified, use the already computed activation
+            vectors or the rules. Shape=[n, d] or [n, d, m]. (Default value
+            = None).
 
-        low_memory : bool
+        low_memory: bool
             If False, set the result as class attribute.
 
         Returns
@@ -1128,9 +1149,10 @@ class RuleSet(object):
         if len(activation_vectors) == 0:
             return np.array([])
         if isinstance(activation_vectors[0], pd.Series):
-            # Giving a list of series to pd.DataFrame will use the first Serie index as columns
-            # and will put each Serie as a line. Then sum will sum from top to bottom and give us
-            # bask a Serie with the initial index
+            # Giving a list of series to pd.DataFrame will use the first
+            # Serie index as columns and will put each Serie as a line. Then
+            # sum will sum from top to bottom and give us bask a Serie with
+            # the initial index
             activation_vectors = pd.DataFrame(data=activation_vectors).sum()
         else:
             activation_vectors = np.sum(activation_vectors, axis=0)
@@ -1155,7 +1177,8 @@ class RuleSet(object):
 
     def predict(self, y_train, x_train, x_test):
         """
-        Computes the prediction vector for a given X and a given aggregation method
+        Computes the prediction vector for a given X and a given aggregation
+        method
         """
         # No need to check x nor y type, it is done in calc_pred
         prediction_vector, bad_cells, no_rules = self.calc_pred(
@@ -1268,12 +1291,12 @@ class RuleSet(object):
 
     """------   Getters   -----"""
 
-    def get_candidates(self, X, k, length, method, nb_jobs):
+    def get_candidates(self, x, k, length, method, nb_jobs):
 
         # No need to check x type, it is done in find_cluster()
         candidates = []
-        for l in [1, length - 1]:
-            rs_length_l = self.extract_length(l)
+        for alength in [1, length - 1]:
+            rs_length_l = self.extract_length(alength)
             if method == "cluter":
                 if (
                     all(
@@ -1281,8 +1304,8 @@ class RuleSet(object):
                     )
                     is False
                 ):
-                    clusters = find_cluster(rs_length_l, X, k, nb_jobs)
-                    self.set_rules_cluster(clusters, l)
+                    clusters = find_cluster(rs_length_l, x, k, nb_jobs)
+                    self.set_rules_cluster(clusters, alength)
 
                 rules_list = []
                 for i in range(k):
@@ -1435,20 +1458,21 @@ class Learning(BaseEstimator):
         # learning += self.get_param('target')
         return learning
 
+    # noinspection PyUnresolvedReferences,PyTypeChecker
     def fit(self, x, y, features_name=None):
         """
         Fit the model according to the given training data.
 
         Parameters
         ----------
-        x : {array-like or sparse matrix or DataFrame or Series, shape = [n, d]}
-            The training input samples.
+        x: Union[array-like, sparse matrix, pd.DataFrame, pd.Series]
+            shape = [n, d]. The training input samples.
 
-        y : {array-like or DataFrame or Series, shape = [n]}
-            The target values (real numbers).
+        y: Union[array-like, pd.DataFrame, pd.Series]
+            shape = [n]. The target values (real numbers).
 
-        features_name : {list}, optional
-                        Name of each features
+        features_name : List
+            Optional. Name of each features.
         """
 
         # TODO : maybe check index if df or series ?
@@ -1462,7 +1486,9 @@ class Learning(BaseEstimator):
         # Check type for data
         data_x = check_array(data_x, dtype=None, force_all_finite=False)
 
-        data_y = check_array(data_y, dtype=None, ensure_2d=False, force_all_finite=False)
+        data_y = check_array(
+            data_y, dtype=None, ensure_2d=False, force_all_finite=False
+        )
 
         # Creation of data-driven parameters
         if hasattr(self, "beta") is False:
@@ -1511,8 +1537,8 @@ class Learning(BaseEstimator):
             self.set_params(l_max=l_max)
 
         # Turn the matrix X in a discret matrix
-        X_discretized = self.discretize(data_x)
-        self.set_params(X=X_discretized)
+        x_discretized = self.discretize(data_x)
+        self.set_params(X=x_discretized)
 
         # Normalization of y
         ymean = np.nanmean(data_y)
@@ -1581,7 +1607,7 @@ class Learning(BaseEstimator):
         """
         features_name = self.get_param("features_name")
         features_index = self.get_param("features_index")
-        X = self.get_param("X")
+        x = self.get_param("x")
         calcmethod = self.get_param("calcmethod")
         y = self.get_param("y")
         cov_max = self.get_param("covmax")
@@ -1596,7 +1622,7 @@ class Learning(BaseEstimator):
                     lambda var, idx: make_rules(
                         var,
                         idx,
-                        X,
+                        x,
                         y,
                         calcmethod,
                         cov_min,
@@ -1610,7 +1636,7 @@ class Learning(BaseEstimator):
         else:
             ruleset = Parallel(n_jobs=jobs, backend="multiprocessing")(
                 delayed(make_rules)(
-                    var, idx, X, y, calcmethod, cov_min, cov_max, low_memory
+                    var, idx, x, y, calcmethod, cov_min, cov_max, low_memory
                 )
                 for var, idx in zip(features_name, features_index)
             )
@@ -1627,7 +1653,7 @@ class Learning(BaseEstimator):
         Returns a ruleset of rules with a given length.
         """
         nb_jobs = self.get_param("nb_jobs")
-        X = self.get_param("X")
+        x = self.get_param("x")
         calcmethod = self.get_param("calcmethod")
         y = self.get_param("y")
         cov_max = self.get_param("covmax")
@@ -1640,14 +1666,14 @@ class Learning(BaseEstimator):
             if nb_jobs == 1:
                 rs = [
                     eval_rule(
-                        rule, X, y, calcmethod, cov_min, cov_max, low_memory
+                        rule, x, y, calcmethod, cov_min, cov_max, low_memory
                     )
                     for rule in rules_list
                 ]
             else:
                 rs = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
                     delayed(eval_rule)(
-                        rule, X, y, calcmethod, cov_min, cov_max, low_memory
+                        rule, x, y, calcmethod, cov_min, cov_max, low_memory
                     )
                     for rule in rules_list
                 )
@@ -1673,17 +1699,17 @@ class Learning(BaseEstimator):
         method = self.get_param("method")
         low_memory = self.get_param("low_memory")
         if low_memory:
-            X = self.get_param("X")
+            x = self.get_param("x")
         else:
-            X = None
+            x = None
 
-        rs1, rs2 = ruleset.get_candidates(X, k, length, method, nb_jobs)
+        rs1, rs2 = ruleset.get_candidates(x, k, length, method, nb_jobs)
         self.set_params(ruleset=ruleset)
 
         if len(rs2) > 0:
             inter_list = Parallel(n_jobs=nb_jobs, backend="multiprocessing")(
                 delayed(calc_intersection)(
-                    rule, rs1, cov_min, cov_max, X, low_memory
+                    rule, rs1, cov_min, cov_max, x, low_memory
                 )
                 for rule in rs2
             )
@@ -1784,26 +1810,27 @@ class Learning(BaseEstimator):
             if selected_rs.calc_coverage(x_train) < 1:
                 print("Warning: Covering is not completed!")
                 print(selected_rs.calc_coverage(x_train))
-                # neg_rule, pos_rule = add_no_rule(selected_rs, x_train, y_train)
-                # features_name = self.get_param('features_name')
-                #
-                # if neg_rule is not None:
-                #     id_feature = neg_rule.conditions.get_param('features_index')
-                #     rule_features = list(itemgetter(*id_feature)(features_name))
-                #     neg_rule.conditions.set_params(features_name=rule_features)
-                #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
-                #     cov_max=1.0)
-                #     print('Add negative no-rule  %s.' % str(neg_rule))
-                #     selected_rs.append(neg_rule)
-                #
-                # if pos_rule is not None:
-                #     id_feature = pos_rule.conditions.get_param('features_index')
-                #     rule_features = list(itemgetter(*id_feature)(features_name))
-                #     pos_rule.conditions.set_params(features_name=rule_features)
-                #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
-                #     cov_max=1.0)
-                #     print('Add positive no-rule  %s.' % str(pos_rule))
-                #     selected_rs.append(pos_rule)
+            # TO REINDENT IF UNCOMMENTED (shoud be in the if)
+            # neg_rule, pos_rule = add_no_rule(selected_rs, x_train,
+            # y_train) features_name = self.get_param('features_name')
+            #
+            # if neg_rule is not None:
+            #     id_feature = neg_rule.conditions.get_param('features_index')
+            #     rule_features = list(itemgetter(*id_feature)(features_name))
+            #     neg_rule.conditions.set_params(features_name=rule_features)
+            #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
+            #     cov_max=1.0)
+            #     print('Add negative no-rule  %s.' % str(neg_rule))
+            #     selected_rs.append(neg_rule)
+            #
+            # if pos_rule is not None:
+            #     id_feature = pos_rule.conditions.get_param('features_index')
+            #     rule_features = list(itemgetter(*id_feature)(features_name))
+            #     pos_rule.conditions.set_params(features_name=rule_features)
+            #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
+            #     cov_max=1.0)
+            #     print('Add positive no-rule  %s.' % str(pos_rule))
+            #     selected_rs.append(pos_rule)
             else:
                 print("Covering is completed.")
 
@@ -1830,7 +1857,10 @@ class Learning(BaseEstimator):
             gamma = 1.0
             i = 0
             rg_add = 0
-        # old_criterion = calc_ruleset_crit(selected_rs, y_train, x_train, calcmethod)
+        # old_criterion = calc_ruleset_crit(selected_rs,
+        #                                   y_train,
+        #                                   x_train,
+        #                                   calcmethod)
         # crit_evo.append(old_criterion)
         nb_rules = len(rs)
 
@@ -1878,7 +1908,7 @@ class Learning(BaseEstimator):
         # self.set_params(critlist=crit_evo)
         return rg_add, selected_rs
 
-    def predict(self, X, check_input=True):
+    def predict(self, x, check_input=True):
         """
         Predict regression target for X.
         The predicted regression target of an input sample is computed as the
@@ -1886,7 +1916,7 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        X : {array type or sparse matrix or DataFrame or Series
+        x : {array type or sparse matrix or DataFrame or Series
              of shape = [n_samples, n_features]}
             The input samples. Internally, its dtype will be converted to
             ``dtype=np.float32``. If a spares matrix is provided, it will be
@@ -1901,14 +1931,14 @@ class Learning(BaseEstimator):
         """
 
         # TODO : if df or series, check index ?
-        data_x = X
-        if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
-            data_x = X.values
+        data_x = x
+        if isinstance(x, pd.Series) or isinstance(x, pd.DataFrame):
+            data_x = x.values
 
         y_train = self.get_param("y")
         x_train = self.get_param("X")
 
-        data_x = self.validate_X_predict(data_x, check_input)
+        data_x = self.validate_x_predict(data_x, check_input)
         x_copy = self.discretize(data_x)
 
         ruleset = self.get_param("selected_rs")
@@ -1984,14 +2014,14 @@ class Learning(BaseEstimator):
 
     """------   Data functions   -----"""
 
-    def validate_X_predict(self, X, check_input):
+    def validate_x_predict(self, x, check_input):
         """
         Validate X whenever one tries to predict, apply, predict_proba
         """
         # TODO : if df or series, check index ?
-        data_x = X
-        if isinstance(X, pd.Series) or isinstance(X, pd.DataFrame):
-            data_x = X.values
+        data_x = x
+        if isinstance(x, pd.Series) or isinstance(x, pd.DataFrame):
+            data_x = x.values
 
         if hasattr(self, "fitted") is False:
             raise AttributeError(
@@ -2003,6 +2033,7 @@ class Learning(BaseEstimator):
             # type: np.ndarray
             data_x = check_array(data_x, dtype=None, force_all_finite=False)
 
+            # noinspection PyUnresolvedReferences
             n_features = data_x.shape[1]
             input_features = self.get_param("features_name")
             if len(input_features) != n_features:
@@ -2021,14 +2052,14 @@ class Learning(BaseEstimator):
 
         Parameters
         ----------
-        x : {array, matrix type} or DataFrame or Series, shape=[n_samples, n_features]
-            Features matrix
+        x : Union[array, pd.DataFrame, pd.Series]
+            shape=[n_samples, n_features]. Features matrix
 
         Return
-        -------
-        col : {array, matrix type}, shape=[n_samples, n_features]
-              Features matrix with each features values discretized
-              in nb_bucket values
+        ------
+        col : array
+            shape=[n_samples, n_features]. Features matrix with each
+            features values discretized in nb_bucket values
         """
 
         # TODO : if df or series, check index ?
@@ -2321,7 +2352,8 @@ class Learning(BaseEstimator):
 
     def plot_counter(self):
         """
-        Function plots a graphical counter of variables used in rules by modality.
+        Function plots a graphical counter of variables used in rules by
+        modality.
         """
         nb_bucket = self.get_param("nb_bucket")
         y_labels, counter = self.make_count_matrix(return_vars=True)
@@ -2520,33 +2552,33 @@ def make_rules(
     Parameters
     ----------
     feature_name : {string type}
-                   Name of the feature
+        Name of the feature
 
     feature_index : {int type}
-                    Columns index of the feature
+        Columns index of the feature
 
-    x : {array-like or discretized matrix or DataFrame or Series, shape = [n, d]}
-        The training input samples after discretization.
+    x: Union[array-like, pd.DataFrame, pd.Series]
+        shape = [n, d]. The training input samples after discretization.
 
-    y : {array-like or DataFrame or Series, shape = [n]}
-        The normalized target values (real numbers).
+    y: Union[array-like, pd.DataFrame, pd.Series]
+        shape = [n]. The normalized target values (real numbers).
 
-    method : {string type}
-             The method mse_function or mse_function criterion
+    method: str
+        The method mse_function or mse_function criterion
 
-    cov_min : {float type such as 0 <= covmin <= 1}
-              The minimal coverage of one rule
+    cov_min: float
+        Such as 0 <= covmin <= 1. The minimal coverage of one rule
 
-    cov_max : {float type such as 0 <= covmax <= 1}
-              The maximal coverage of one rule
+    cov_max: float
+        Such as 0 <= covmax <= 1. The maximal coverage of one rule
 
-    low_memory : {bool type}
-                 To save activation vectors of rules
+    low_memory: bool
+        To save activation vectors of rules
 
     Return
     ------
-    rules_list : {list type}
-               the list of all suitable rules on the chosen feature.
+    rules_list: List
+        the list of all suitable rules on the chosen feature.
     """
 
     # TODO : if df or series, check index ?
@@ -2612,7 +2644,7 @@ def make_rules(
 def eval_rule(
     rule: Rule,
     x: Union[np.ndarray, pd.DataFrame, pd.Series],
-    y: Union[np.ndarray, pd.Series],
+    y: Union[np.ndarray, pd.DataFrame, pd.Series],
     method: str,
     cov_min: float,
     cov_max: float,
@@ -2630,7 +2662,7 @@ def eval_rule(
         The training input samples after discretization.
         shape = [n, d]. So date-features
 
-    y : Union[np.ndarray, pd.Series]
+    y : Union[np.ndarray, pd.DataFrame, pd.Series]
         The normalized target values (real numbers).
         shape = [n]
 
@@ -2681,7 +2713,7 @@ def eval_rule(
 
 
 def calc_intersection(
-    rule, ruleset, cov_min, cov_max, X=None, low_memory=False
+    rule, ruleset, cov_min, cov_max, x=None, low_memory=False
 ):
     """
     Calculation of all statistics of an rules
@@ -2700,7 +2732,7 @@ def calc_intersection(
     cov_max : {float type such as 0 <= covmax <= 1}
               The maximal coverage of one rule
 
-    X : {array-like or discretized matrix or DataFrame or Series,
+    x : {array-like or discretized matrix or DataFrame or Series,
         shape = [n, d] or None}
         The training input samples after discretization.
         If low_memory is True X must not be None
@@ -2719,7 +2751,7 @@ def calc_intersection(
     # No need to check X and y type, it is done in intersect
 
     rules_list = [
-        rule.intersect(r, cov_min, cov_max, X, low_memory) for r in ruleset
+        rule.intersect(r, cov_min, cov_max, x, low_memory) for r in ruleset
     ]
     rules_list = list(filter(None, rules_list))  # to drop bad rules
     rules_list = list(set(rules_list))
@@ -2759,14 +2791,14 @@ def calc_ruleset_crit(ruleset, y_train, x_train=None, method="MSE"):
     return criterion
 
 
-def find_cluster(ruleset, X, k, n_jobs):
+def find_cluster(ruleset, x, k, n_jobs):
 
     # No need to check X and y type, it is done in get_activation
 
     if len(ruleset) > k:
         prediction_matrix = np.array(
             [
-                rule.get_param("pred") * rule.get_activation(X)
+                rule.get_param("pred") * rule.get_activation(x)
                 for rule in ruleset
             ]
         )
@@ -3058,7 +3090,8 @@ def get_activated_values(
     if type(activation_vector) != type(y):
         raise ValueError(
             "Activation vector and Y must be of same type."
-            f"\nHere activation vector is a {type(activation_vector)} while Y is a {type(y)}"
+            f"\nHere activation vector is a {type(activation_vector)} while "
+            f"Y is a {type(y)} "
         )
 
     if isinstance(y, pd.Series):
@@ -3126,6 +3159,7 @@ def calc_variance(activation_vector, y):
     return cond_var
 
 
+# noinspection PyArgumentList
 def find_bins(x, nb_bucket):
     """
     Function used to find the bins to discretize xcol in nb_bucket modalities
