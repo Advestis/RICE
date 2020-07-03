@@ -134,50 +134,59 @@ class RuleConditions(object):
         to_hash = frozenset(to_hash)
         return hash(to_hash)
 
-    def check_index(self, ind: List):
-        """ Check if content of ind matches content of self.feature_names.
+    def check_index(self, ind: Union[List, pd.Index]):
+        """ Check if content of ind matches content of self.features_name.
         Order does not matter.
 
         Parameters
         ----------
-        ind : pd.Index
+        ind : Union[List, pd.Index]
 
         Returns
         -------
         None
-            Raises an error if does not match
+            Raises an error if at least one element of self.features_name
+            did not find a match in ind.
 
         """
 
-        l_ind = ind[:]
+        l_ind = list(ind)[:]
         l_feat = self.features_name[:]
         l_ind.sort()
         l_feat.sort()
-        if l_ind != l_feat:
-            in_ind = [f for f in l_ind if f not in l_feat]
-            in_cond = [f for f in l_feat if f not in l_ind]
+        no_match = [f for f in l_feat if f not in l_ind]
+
+        if len(no_match) > 0:
             to_raise = (
                 "Index and features do not match:"
-                f"\n  {in_ind} are in index but not in condition's features"
-                f"\n  {in_cond} are in condition's features but not in index"
+                f"\n  {no_match} are in condition's features but not in"
+                f" index"
+                f"\n  condition's features are {l_feat}"
             )
             raise ValueError(to_raise)
 
-    def order_index(self, x: pd.DataFrame):
-        """ Order x's columns according to self features_index and
-        features_names, assuming x's columns are features
+    def order_columns(self, x: pd.DataFrame) -> pd.DataFrame:
+        """ Order x's columns according to features_names, assuming x's
+        columns are features. If x contains more features than
+        self.features_name, returns the subset of x matching
+        self.features_name, with columns ordered according to
+        self.features_name.
 
-        Parameters ---------- x : pd.DataFrame x data to sort the columns
-        of. shape=[n, d], so index is date and columns is features names
+        Parameters
+        ----------
+        x: pd.DataFrame
+            x data to sort the columns of. shape=[n, d], so index is date 
+            and columns is features names
 
         Returns
         -------
-        None
-            Operates in-place
+        pd.DataFrame
+            The DataFrame with columns matching self.features_name
         """
 
-        self.check_index(list(x.columns))
-        x.columns = self.features_name
+        self.check_index(x.columns)
+        x = x.loc[:, self.features_name]
+        return x
 
     def transform(self, x: Union[np.ndarray, pd.Series, pd.DataFrame]):
         """ Transforms a matrix xmat into an activation vector.
@@ -190,21 +199,34 @@ class RuleConditions(object):
         x: Union[np.ndarray, pd.Series, pd.DataFrame]
             Input data. shape=[n, d] or shape=[n, d, m] (if DataFrame)
 
-        Returns ------- activation_vector: Union[np.array, pd.Series] The
-        activation vector, shape=n or shape=[n, m] if x is DataFrame.
-        Multi-Indexed in that case.
+        Returns
+        -------
+        activation_vector: Union[np.array, pd.Series]
+            The activation vector, shape=n or shape=[n, m] if x is DataFrame.
+            Multi-Indexed in that case.
         """
 
         if isinstance(x, np.ndarray):
             # Return is a np.array of shape n
             return self.transform_array(x)
-        elif isinstance(x.index, pd.Series):
+        elif isinstance(x, pd.Series):
             # Return is a Series of shape n
             return self.transform_series(x)
-        elif isinstance(x.index, pd.DataFrame):
-            # Return is a Multi-indexed Series if shape [n, m] (n dates and
+        elif isinstance(x, pd.DataFrame):
+            # Tries to guess if features name are in the columns. By
+            # default, the y names are assumed to be the columns.
+            columns = "y"
+            try:
+                self.check_index(x.columns)
+                columns = "x"
+            except ValueError as e:
+                if "Index and features do not match" in str(e):
+                    pass
+                else:
+                    raise e
+            # Return is a Multi-indexed Series of shape [n, m] (n dates and
             # m Ys)
-            return self.transform_dataframe(x)
+            return self.transform_dataframe(x, columns)
         else:
             raise ValueError(f"Unknown type for x: {type(x)}")
 
@@ -261,7 +283,7 @@ class RuleConditions(object):
         return activation_vector
 
     def transform_series(self, x: pd.Series):
-        """ Transforms a matrix into an activation vector.
+        """ Transforms a pd.Series into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
         satisfied and 1 otherwise.
@@ -278,15 +300,15 @@ class RuleConditions(object):
         """
 
         x_data = x.unstack()
-        self.order_index(x_data)
+        x_data = self.order_columns(x_data)
         return pd.Series(
             index=list(x_data.index),
-            data=self.transform_array(x_data.values()),
+            data=self.transform_array(x_data.values),
         )
 
-    def transform_dataframe(self, x: pd.DataFrame):
+    def transform_dataframe(self, x: pd.DataFrame, columns="y"):
         # TODO must be tested !
-        """ Transforms a matrix into an activation vector.
+        """ Transforms a pd.DataFrame into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
         satisfied and 1 otherwise.
@@ -297,22 +319,40 @@ class RuleConditions(object):
             Multi-indexed. Index shape=[n, d], columns shape=[m]. So
             multiindexed by date-features names, and columns are y names
 
+        columns: str
+            if 'y', assumes columns are y names and index second level is
+            features names. If 'x', assumes the opposite (Default value = 'y').
+
         Returns
         -------
         activation_vector: pd.Series
             The activation vector. Index shape=[n, m]. So indexed by dates-Y
-             names
+            names
 
         """
 
         dates = list(set(x.index.get_level_values(0)))
-        activation_vector = pd.DataFrame(
-            index=dates, columns=x.columns, data=True
-        )
-        for yname in x.columns:
-            data_x = x[yname]
-            av = self.transform_series(data_x)
-            activation_vector[yname] = av
+        if columns != "x" and columns != "y":
+            raise ValueError("Argument 'columns' must be 'x' or 'y', "
+                             f"not {columns}")
+        if columns == "y":
+            activation_vector = pd.DataFrame(
+                index=dates, columns=x.columns, data=True
+            )
+            for yname in x.columns:
+                data_x = x[yname]
+                av = self.transform_series(data_x)
+                activation_vector[yname] = av
+        else:
+            activation_vector = pd.DataFrame(
+                index=dates, columns=list(set(x.index.get_level_values(1))),
+                data=True
+            )
+            for yname in activation_vector.columns:
+                idx = pd.IndexSlice
+                data_x = x.loc[idx[:, yname], :].droplevel(1).stack()
+                av = self.transform_series(data_x)
+                activation_vector[yname] = av
 
         return activation_vector.stack()
 
