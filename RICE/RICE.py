@@ -152,38 +152,64 @@ class RuleConditions(object):
         to_hash = frozenset(to_hash)
         return hash(to_hash)
 
-    def check_index(self, ind: Union[List, pd.Index]):
+    def check_index(self, features: pd.DataFrame,
+                    missing_feature: str = 'fillna'):
         """ Check if content of ind matches content of self.features_names.
         Order does not matter.
 
         Parameters
         ----------
-        ind : Union[List, pd.Index]
+        features: pd.DataFrame
+            shape=[n, d]
+
+        missing_feature: str
+            What to do in case some elements in self.features_names are not in
+            x. Can be 'raise', 'fillna' or 'filltrue'. If 'raise',
+            any missing feature in ind will raise an error. If 'fillna',
+            any missnig feature will be filled with NaN, not activating the
+            condition. If 'filltrue', will fill with a value that will always
+            activated the condition.
 
         Returns
         -------
         None
-            Raises an error if at least one element of self.features_names
-            did not find a match in ind.
 
         """
 
-        l_ind = list(ind)[:]
+        l_ind = list(features)[:]
         l_feat = self.features_names[:]
         l_ind.sort()
         l_feat.sort()
         no_match = [f for f in l_feat if f not in l_ind]
 
         if len(no_match) > 0:
-            to_raise = (
-                "Index and features do not match:"
-                f"\n  {no_match} are in condition's features but not in"
-                f" x's index \n(index is {l_ind})"
-                f"\n  condition's features are {l_feat}"
-            )
-            raise ValueError(to_raise)
+            if missing_feature == 'raise':
+                to_raise = (
+                    "Index and features do not match:"
+                    f"\n  {no_match} are in condition's features but not in"
+                    f" x's index \n(index is {l_ind})"
+                    f"\n  condition's features are {l_feat}"
+                )
+                raise ValueError(to_raise)
+            elif missing_feature == 'fillna':
+                for mf in no_match:
+                    features[mf] = pd.Series(index=features.index, data=np.nan)
+            elif missing_feature == 'filltrue':
+                print("chien")
+                for mf in no_match:
+                    bmin = self.bmin[self.features_names.index(mf)]
+                    bmax = self.bmax[self.features_names.index(mf)]
+                    # set to a value between bmin and bmax to be sure it
+                    # activates
+                    value = (bmin + bmax) / 2
+                    features[mf] = pd.Series(index=features.index, data=value)
+            else:
+                raise ValueError(f"Unknown value {missing_feature} for "
+                                 f"missing_features.")
+        return features
 
-    def order_columns(self, x: pd.DataFrame) -> pd.DataFrame:
+    def order_columns(self, x: pd.DataFrame, missing_feature: str = 'fillna') \
+            -> pd.DataFrame:
         """ Order x's columns according to features_namess, assuming x's
         columns are features. If x contains more features than
         self.features_names, returns the subset of x matching
@@ -196,17 +222,53 @@ class RuleConditions(object):
             x data to sort the columns of. shape=[n, d], so index is date 
             and columns is features names
 
+        missing_feature: str
+            What to do in case some elements in self.features_names are not in
+            x. Can be 'raise', 'fillna' or 'filltrue'. If 'raise',
+            any missing feature in ind will raise an error. If 'fillna',
+            any missnig feature will be filled with NaN, not activating the
+            condition. If 'filltrue', will fill with a value that will always
+            activated the condition.
+
         Returns
         -------
         pd.DataFrame
             The DataFrame with columns matching self.features_names
         """
 
-        self.check_index(x.columns)
+        self.check_index(x, missing_feature)
         x = x.loc[:, self.features_names]
         return x
 
-    def transform(self, x: Union[np.ndarray, pd.Series, pd.DataFrame]):
+    def tag_columns(self, x: pd.DataFrame) -> str:
+        """Fill return 'y' if columns are Ys, 'x' if columns are features,
+        raises IndexError if features are found nowhere.
+
+        Parameters
+        ----------
+            x: pd.DataFrame
+                The features Dataframe. shape=[n, d, m] or [n, m, d] or
+                [d, n, m] of [m, n, d]. Has to be multiindexed.
+
+        Returns
+        -------
+            str
+
+        """
+        for item in x.columns:
+            if item in self.features_names:
+                return 'x'
+        for level in range(len(x.index.levels)):
+            for item in list(x.index.levels[level]):
+                if item in self.features_names:
+                    return 'y'
+
+        raise IndexError(f"None of the features in the condition"
+                         f" were found in x")
+
+    def transform(self, x: Union[np.ndarray, pd.Series, pd.DataFrame],
+                  missing_feature: str = "fillna", columns: str = None)\
+            -> Union[np.array, pd.Series]:
         """ Transforms a matrix xmat into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
@@ -219,6 +281,19 @@ class RuleConditions(object):
             Ys:
             Input data. shape=[n, d] or [n, d, m] or [n, m, d] or [d, n, m]
             of [m, n, d].
+
+        missing_feature: str
+            What to do in case some elements in self.features_names are not in
+            x. Can be 'raise', 'fillna' or 'filltrue'. If 'raise',
+            any missing feature in ind will raise an error. If 'fillna',
+            any missnig feature will be filled with NaN, not activating the
+            condition. If 'filltrue', will fill with a value that will always
+            activated the condition.
+
+        columns: str
+            If 'y', assumes columns are y names and index second level is
+            features names. If 'x', assumes the opposite, If None, will try
+            to guess by looking for feature names in x (Default value = None).
 
         Returns
         -------
@@ -235,21 +310,18 @@ class RuleConditions(object):
             return self.transform_series(x)
         elif isinstance(x, pd.DataFrame):
             if not isinstance(x.index, pd.MultiIndex):
-                return self.transform_series(x.stack())
+                return self.transform_series(x.stack(dropna=False),
+                                             missing_feature)
             # Tries to guess if features name are in the columns. By
             # default, the y names are assumed to be the columns.
-            columns = "y"
-            try:
-                self.check_index(x.columns)
-                columns = "x"
-            except ValueError as e:
-                if "Index and features do not match" in str(e):
-                    pass
-                else:
-                    raise e
+            if columns is None:
+                columns = self.tag_columns(x)
+            if columns != 'y' and columns != 'x':
+                raise ValueError(f"Unknown value {columns} for columns.")
+
             # Return is a Multi-indexed Series of shape [n, m] (n dates and
             # m Ys)
-            return self.transform_dataframe(x, columns)
+            return self.transform_dataframe(x, columns, missing_feature)
         else:
             raise ValueError(f"Unknown type for x: {type(x)}")
 
@@ -339,7 +411,8 @@ class RuleConditions(object):
 
         return activation_vector
 
-    def transform_series(self, x: pd.Series):
+    def transform_series(self, x: pd.Series,
+                         missing_feature: str = 'fillna') -> pd.Series:
         """ Transforms a pd.Series into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
@@ -352,6 +425,14 @@ class RuleConditions(object):
         x: pd.Series
             Input data. Multi-indexed. shape=[n, d] when unstacked.
 
+        missing_feature: str
+            What to do in case some elements in self.features_names are not in
+            x. Can be 'raise', 'fillna' or 'filltrue'. If 'raise',
+            any missing feature in ind will raise an error. If 'fillna',
+            any missnig feature will be filled with NaN, not activating the
+            condition. If 'filltrue', will fill with a value that will always
+            activated the condition.
+
         Returns
         -------
         activation_vector: pd.Series
@@ -359,12 +440,13 @@ class RuleConditions(object):
         """
 
         x_data = x.unstack()
-        x_data = self.order_columns(x_data)
+        x_data = self.order_columns(x_data, missing_feature)
         return pd.Series(
             index=list(x_data.index), data=self.transform_subarray(x_data),
         )
 
-    def transform_dataframe(self, x: pd.DataFrame, columns="y"):
+    def transform_dataframe(self, x: pd.DataFrame, columns: str,
+                            missing_feature: str = 'fillna') -> pd.Series:
         """ Transforms a pd.DataFrame into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
@@ -382,7 +464,15 @@ class RuleConditions(object):
 
         columns: str
             if 'y', assumes columns are y names and index second level is
-            features names. If 'x', assumes the opposite (Default value = 'y').
+            features names. If 'x', assumes the opposite.
+
+        missing_feature: str
+            What to do in case some elements in self.features_names are not in
+            x. Can be 'raise', 'fillna' or 'filltrue'. If 'raise',
+            any missing feature in ind will raise an error. If 'fillna',
+            any missnig feature will be filled with NaN, not activating the
+            condition. If 'filltrue', will fill with a value that will always
+            activated the condition.
 
         Returns
         -------
@@ -404,7 +494,7 @@ class RuleConditions(object):
         dates.sort()
         if columns != "x" and columns != "y":
             raise ValueError(
-                "Argument 'columns' must be 'x' or 'y', " f"not {columns}"
+                "Argument 'columns' must be 'x', 'y' {columns}"
             )
         if columns == "y":
             # columns are ynames, index are dates
@@ -416,8 +506,8 @@ class RuleConditions(object):
                 # If multiindex was x-date, we need to swap to end up with
                 # date-x
                 if other_index == 0:
-                    data_x = data_x.unstack().T.stack()
-                av = self.transform_series(data_x)
+                    data_x = data_x.unstack().T.stack(dropna=False)
+                av = self.transform_series(data_x, missing_feature)
                 activation_vector[yname] = av
         else:
             # Do not use set for it messes up columns ordering
@@ -429,12 +519,16 @@ class RuleConditions(object):
             for yname in activation_vector.columns:
                 idx = pd.IndexSlice
                 if other_index == 1:
-                    data_x = x.loc[idx[:, yname], :].droplevel(1).stack()
+                    data_x = x.loc[idx[:, yname], :].droplevel(1).stack(
+                        dropna=False
+                    )
                 else:
-                    data_x = x.loc[idx[yname, :], :].droplevel(0).stack()
-                av = self.transform_series(data_x)
+                    data_x = x.loc[idx[yname, :], :].droplevel(0).stack(
+                        dropna=False
+                    )
+                av = self.transform_series(data_x, missing_feature)
                 activation_vector[yname] = av
-        return activation_vector.stack()
+        return activation_vector.stack(dropna=False)
 
     """------   Getters   -----"""
 
