@@ -22,6 +22,17 @@ from sklearn.metrics import accuracy_score, r2_score
 from sklearn.utils import check_array
 from sklearn.cluster import KMeans
 from typing import Union, List
+from adutils import TransparentPath
+
+
+def convert_string_to_list(thestring, dtype="str"):
+    thestring = thestring.replace("[", "").replace("]", "").replace(" ", "")
+    thestring = thestring.replace('"', "").replace("'", "").split(",")
+    if dtype == "float":
+        thestring = [float(i) for i in thestring]
+    elif dtype == "int":
+        thestring = [int(i) for i in thestring]
+    return thestring
 
 
 """
@@ -38,66 +49,73 @@ class RuleConditions(object):
 
     def __init__(
         self,
-        features_name,
-        features_index,
-        bmin,
-        bmax,
-        xmin,
-        xmax,
+        features_names,
+        features_index=None,
+        bmin=None,
+        bmax=None,
+        xmin=None,
+        xmax=None,
         values=None,
     ):
 
-        assert isinstance(features_name, (tuple, list, np.ndarray)), (
+        assert isinstance(features_names, (tuple, list, np.ndarray)), (
             "Type of parameter must be iterable tuple, list or array"
-            % features_name
+            % features_names
         )
-        self.features_name = features_name
-        length = len(features_name)
+        self.features_names = features_names
+        length = len(features_names)
 
-        assert isinstance(features_index, (tuple, list, np.ndarray)), (
-            "Type of parameter must be iterable tuple, list or array"
-            % features_name
-        )
-        assert len(features_index) == length, (
-            "Parameters must have the same length" % features_name
-        )
+        if features_index is not None:
+            assert isinstance(features_index, (tuple, list, np.ndarray)), (
+                "Type of parameter must be iterable tuple, list or array"
+                % features_names
+            )
+            assert len(features_index) == length, (
+                "Parameters must have the same length" % features_names
+            )
         self.features_index = features_index
+
+        if bmin is None:
+            raise TypeError("bmin can not be None")
+        if bmax is None:
+            raise TypeError("bmax can not be None")
 
         assert isinstance(bmin, (tuple, list, np.ndarray)), (
             "Type of parameter must be iterable tuple, list or array"
-            % features_name
+            % features_names
         )
         assert len(bmin) == length, (
-            "Parameters must have the same length" % features_name
+            "Parameters must have the same length" % features_names
         )
         assert isinstance(bmax, (tuple, list, np.ndarray)), (
             "Type of parameter must be iterable tuple, list or array"
-            % features_name
+            % features_names
         )
         assert len(bmax) == length, (
-            "Parameters must have the same length" % features_name
+            "Parameters must have the same length" % features_names
         )
         if type(bmin[0]) != str:
             assert all(map(lambda a, b: a <= b, bmin, bmax)), (
-                "Bmin must be smaller or equal than bmax (%s)" % features_name
+                "Bmin must be smaller or equal than bmax (%s)" % features_names
             )
         self.bmin = bmin
         self.bmax = bmax
-
-        assert isinstance(xmax, (tuple, list, np.ndarray)), (
-            "Type of parameter must be iterable tuple, list or array"
-            % features_name
-        )
-        assert len(xmax) == length, (
-            "Parameters must have the same length" % features_name
-        )
-        assert isinstance(xmin, (tuple, list, np.ndarray)), (
-            "Type of parameter must be iterable tuple, list or array"
-            % features_name
-        )
-        assert len(xmin) == length, (
-            "Parameters must have the same length" % features_name
-        )
+        if xmax is not None:
+            assert isinstance(xmax, (tuple, list, np.ndarray)), (
+                "Type of parameter must be iterable tuple, list or array"
+                % features_names
+            )
+            assert len(xmax) == length, (
+                "Parameters must have the same length" % features_names
+            )
+        if xmin is not None:
+            assert isinstance(xmin, (tuple, list, np.ndarray)), (
+                "Type of parameter must be iterable tuple, list or array"
+                % features_names
+            )
+            assert len(xmin) == length, (
+                "Parameters must have the same length" % features_names
+            )
         self.xmin = xmin
         self.xmax = xmax
 
@@ -106,7 +124,7 @@ class RuleConditions(object):
         else:
             assert isinstance(values, (tuple, list, np.ndarray)), (
                 "Type of parameter must be"
-                "iterable tuple, list or array" % features_name
+                "iterable tuple, list or array" % features_names
             )
 
         self.values = [values]
@@ -115,7 +133,7 @@ class RuleConditions(object):
         return self.__str__()
 
     def __str__(self):
-        features = self.features_name
+        features = self.features_names
         return "Var: %s, Bmin: %s, Bmax: %s" % (features, self.bmin, self.bmax)
 
     def __eq__(self, other):
@@ -125,7 +143,7 @@ class RuleConditions(object):
         to_hash = [
             (
                 self.features_index[i],
-                self.features_name[i],
+                self.features_names[i],
                 self.bmin[i],
                 self.bmax[i],
             )
@@ -135,7 +153,7 @@ class RuleConditions(object):
         return hash(to_hash)
 
     def check_index(self, ind: Union[List, pd.Index]):
-        """ Check if content of ind matches content of self.features_name.
+        """ Check if content of ind matches content of self.features_names.
         Order does not matter.
 
         Parameters
@@ -145,13 +163,13 @@ class RuleConditions(object):
         Returns
         -------
         None
-            Raises an error if at least one element of self.features_name
+            Raises an error if at least one element of self.features_names
             did not find a match in ind.
 
         """
 
         l_ind = list(ind)[:]
-        l_feat = self.features_name[:]
+        l_feat = self.features_names[:]
         l_ind.sort()
         l_feat.sort()
         no_match = [f for f in l_feat if f not in l_ind]
@@ -160,17 +178,17 @@ class RuleConditions(object):
             to_raise = (
                 "Index and features do not match:"
                 f"\n  {no_match} are in condition's features but not in"
-                f" index"
+                f" x's index \n(index is {l_ind})"
                 f"\n  condition's features are {l_feat}"
             )
             raise ValueError(to_raise)
 
     def order_columns(self, x: pd.DataFrame) -> pd.DataFrame:
-        """ Order x's columns according to features_names, assuming x's
+        """ Order x's columns according to features_namess, assuming x's
         columns are features. If x contains more features than
-        self.features_name, returns the subset of x matching
-        self.features_name, with columns ordered according to
-        self.features_name.
+        self.features_names, returns the subset of x matching
+        self.features_names, with columns ordered according to
+        self.features_names.
 
         Parameters
         ----------
@@ -181,11 +199,11 @@ class RuleConditions(object):
         Returns
         -------
         pd.DataFrame
-            The DataFrame with columns matching self.features_name
+            The DataFrame with columns matching self.features_names
         """
 
         self.check_index(x.columns)
-        x = x.loc[:, self.features_name]
+        x = x.loc[:, self.features_names]
         return x
 
     def transform(self, x: Union[np.ndarray, pd.Series, pd.DataFrame]):
@@ -197,7 +215,7 @@ class RuleConditions(object):
         Parameters
         ----------
         x: Union[np.ndarray, pd.Series, pd.DataFrame]
-            Input data. shape=[n, d] or shape=[n, d, m] (if DataFrame)
+            Input data. shape=[n, d] or shape=[n, d, m]
 
         Returns
         -------
@@ -213,6 +231,8 @@ class RuleConditions(object):
             # Return is a Series of shape n
             return self.transform_series(x)
         elif isinstance(x, pd.DataFrame):
+            if not isinstance(x.index, pd.MultiIndex):
+                return self.transform_series(x.stack())
             # Tries to guess if features name are in the columns. By
             # default, the y names are assumed to be the columns.
             columns = "y"
@@ -230,16 +250,20 @@ class RuleConditions(object):
         else:
             raise ValueError(f"Unknown type for x: {type(x)}")
 
-    def transform_array(self, x: np.ndarray):
+    def transform_array(self, x: np.ndarray) -> np.array:
         """ Transforms a matrix into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
-        satisfied and 1 otherwise.
+        satisfied and 1 otherwise. The input x must have the same columns as
+        the x used to create the condition. Indeed, The features on which
+        the condition applies now their index position in the initial x, and
+        those positions are used to find the correct column in the x passed as
+        argument.
 
         Parameters
         ----------
         x: np.ndarray
-            Input data. shape=[n, d]
+            Input data containing ALL features. shape=[n, d]
 
         Returns
         -------
@@ -247,14 +271,40 @@ class RuleConditions(object):
             The activation vector, shape=[n]
         """
 
-        length = len(self.features_name)
+        length = len(self.features_names)
+        x_cols = [x[:, self.features_index[i]] for i in range(length)]
+        return self.transform_subarray(x_cols)
+
+    def transform_subarray(
+        self, x_cols: Union[pd.DataFrame, List]
+    ) -> Union[pd.Series, np.ndarray]:
+        """ Transforms a matrix into an activation vector.
+
+        It means an array of 0 and 1. 0 if the condition is not
+        satisfied and 1 otherwise. The input x's columns must match
+        self.features_namess if x is a DataFrame. If it is an array,
+        it should have len(self.features_names) columns.
+
+        Parameters
+        ----------
+        x_cols: Union[pd.DataFrame, List]
+            Input data containing ALL features.
+            shape=[len(self.features_names), d]
+
+        Returns
+        -------
+        activation_vector: Union[pd.Series, np.array]
+            The activation vector, shape=[n]
+        """
+
         geq_min = True
         leq_min = True
         not_nan = True
-        for i in range(length):
-            col_index = self.features_index[i]
-            x_col = x[:, col_index]
-
+        for i in range(len(self.features_names)):
+            if isinstance(x_cols, pd.DataFrame):
+                x_col = x_cols.iloc[:, i].values
+            else:
+                x_col = x_cols[i]
             # Turn x_col to array
             if len(x_col) > 1:
                 x_col = np.squeeze(np.asarray(x_col))
@@ -279,6 +329,10 @@ class RuleConditions(object):
                 not_nan &= np.isfinite(x_col)
 
         activation_vector = 1 * (geq_min & leq_min & not_nan)
+        if isinstance(x_cols, pd.DataFrame):
+            activation_vector = pd.Series(
+                data=activation_vector, index=x_cols.index
+            )
 
         return activation_vector
 
@@ -286,7 +340,9 @@ class RuleConditions(object):
         """ Transforms a pd.Series into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
-        satisfied and 1 otherwise.
+        satisfied and 1 otherwise. When unstacked, x can have any number of
+        columns. Only the columns with names matching self.features_names
+        will be kept.
 
         Parameters
         ----------
@@ -302,12 +358,10 @@ class RuleConditions(object):
         x_data = x.unstack()
         x_data = self.order_columns(x_data)
         return pd.Series(
-            index=list(x_data.index),
-            data=self.transform_array(x_data.values),
+            index=list(x_data.index), data=self.transform_subarray(x_data),
         )
 
     def transform_dataframe(self, x: pd.DataFrame, columns="y"):
-        # TODO must be tested !
         """ Transforms a pd.DataFrame into an activation vector.
 
         It means an array of 0 and 1. 0 if the condition is not
@@ -316,8 +370,11 @@ class RuleConditions(object):
         Parameters
         ----------
         x: pd.DataFrame Input data.
-            Multi-indexed. Index shape=[n, d], columns shape=[m]. So
-            multiindexed by date-features names, and columns are y names
+            Multi-indexed. Index shape=[n, d], columns shape=[m], so
+            multiindexed by date-features names, and columns are y names, or
+            Index shape=[m, d], columns shape=[n], so
+            multiindexed by date-y names, and columns are features names.
+            If the former is true, pass also columns='x'.
 
         columns: str
             if 'y', assumes columns are y names and index second level is
@@ -326,15 +383,17 @@ class RuleConditions(object):
         Returns
         -------
         activation_vector: pd.Series
-            The activation vector. Index shape=[n, m]. So indexed by dates-Y
+            The activation vector. Index shape=[n, m]. So indexed by dates-y
             names
 
         """
 
         dates = list(set(x.index.get_level_values(0)))
+        dates.sort()
         if columns != "x" and columns != "y":
-            raise ValueError("Argument 'columns' must be 'x' or 'y', "
-                             f"not {columns}")
+            raise ValueError(
+                "Argument 'columns' must be 'x' or 'y', " f"not {columns}"
+            )
         if columns == "y":
             activation_vector = pd.DataFrame(
                 index=dates, columns=x.columns, data=True
@@ -344,16 +403,17 @@ class RuleConditions(object):
                 av = self.transform_series(data_x)
                 activation_vector[yname] = av
         else:
+            # Do not use set for it messes up column ordering
+            ncol = len(set(x.index.get_level_values(1)))
+            columns = list(x.index.get_level_values(1))[:ncol]
             activation_vector = pd.DataFrame(
-                index=dates, columns=list(set(x.index.get_level_values(1))),
-                data=True
+                index=dates, columns=columns, data=True
             )
             for yname in activation_vector.columns:
                 idx = pd.IndexSlice
                 data_x = x.loc[idx[:, yname], :].droplevel(1).stack()
                 av = self.transform_series(data_x)
                 activation_vector[yname] = av
-
         return activation_vector.stack()
 
     """------   Getters   -----"""
@@ -373,7 +433,7 @@ class RuleConditions(object):
         from intersection of two rules
         """
         return [
-            self.features_name,
+            self.features_names,
             self.features_index,
             self.bmin,
             self.bmax,
@@ -414,7 +474,7 @@ class Rule(object):
         ), "Must be a RuleCondition object"
 
         self.conditions = rule_conditions
-        self.length = len(rule_conditions.get_param("features_index"))
+        self.length = len(rule_conditions.get_param("features_names"))
 
     def __repr__(self):
         return self.__str__()
@@ -441,10 +501,12 @@ class Rule(object):
         return hash(self.conditions)
 
     def pretty_print(self):
-        s = f"{self.get_param('name')} (" \
+        s = (
+            f"{self.get_param('name')} ("
             f"pred={str(round(self.get_param('prediction'), 2))})\\\\"
+        )
         for x, bmin, bmax in zip(
-            self.conditions.features_name,
+            self.conditions.features_names,
             self.conditions.bmin,
             self.conditions.bmax,
         ):
@@ -479,8 +541,8 @@ class Rule(object):
         c1 = self.conditions
         c2 = rule.conditions
 
-        c1_name = c1.get_param("features_name")
-        c2_name = c2.get_param("features_name")
+        c1_name = c1.get_param("features_names")
+        c2_name = c2.get_param("features_names")
         if len(set(c1_name).intersection(c2_name)) != 0:
             return True
         else:
@@ -568,7 +630,7 @@ class Rule(object):
                 conditions_list = self.intersect_conditions(rule)
 
                 new_conditions = RuleConditions(
-                    features_name=conditions_list[0],
+                    features_names=conditions_list[0],
                     features_index=conditions_list[1],
                     bmin=conditions_list[2],
                     bmax=conditions_list[3],
@@ -898,12 +960,24 @@ class RuleSet(object):
     Class for a ruleset. It's a kind of list of rule object
     """
 
-    def __init__(self, rs):
-        self.activation = None
-        if type(rs) in [list, np.ndarray]:
-            self.rules = rs
-        elif type(rs) == RuleSet:
-            self.rules = rs.get_rules()
+    def __init__(self, rs=None, path: TransparentPath = None):
+        self.rules_df = None
+        self.rules = None
+        if path is None:
+            if rs is None:
+                raise ValueError(
+                    "RuleSet: need to provide either rs or "
+                    "path. If you want an empty RuleSet, "
+                    "you can pass rs=[]."
+                )
+            self.activation = None
+            if type(rs) in [list, np.ndarray]:
+                self.rules = rs
+            elif type(rs) == RuleSet:
+                self.rules = rs.get_rules()
+            self.make_rules_df()
+        else:
+            self.load_rules_from_file(path)
 
     def __repr__(self):
         return self.__str__()
@@ -930,7 +1004,10 @@ class RuleSet(object):
         return self.get_rules()[i]
 
     def __len__(self):
-        return len(self.get_rules())
+        try:
+            return len(self.get_rules())
+        except TypeError:
+            return 0
 
     def __del__(self):
         if len(self) > 0:
@@ -942,6 +1019,111 @@ class RuleSet(object):
 
     def __delitem__(self, rules_id):
         del self.rules[rules_id]
+
+    def load_rules_from_file(self, path: TransparentPath):
+        if not path.is_file():
+            raise FileNotFoundError(f"Could not find ruleset file {path}.")
+
+        self.rules_df = path.read(index_col=0)
+        cols = [c.lower() for c in self.rules_df.columns]
+        self.rules_df.columns = cols
+
+        if not isinstance(self.rules_df, pd.DataFrame):
+            raise TypeError(
+                "Expected a DataFrame in the input ruleset file,"
+                f"got {type(self.rules_df)} instead."
+            )
+
+        expected_columns = ["features_names", "bmin", "bmax"]
+        try:
+            self.rules_df.loc[:, expected_columns]
+        except KeyError:
+            raise KeyError(
+                "The DataFrame in the input file must contain "
+                "at least the following columns:\n"
+                f"{expected_columns}"
+            )
+
+        rules = []
+        for rule_name in self.rules_df.index:
+            fi = None
+            if "features_index" in self.rules_df.columns:
+                fi = self.rules_df.loc[rule_name, "features_index"]
+            fn = convert_string_to_list(
+                self.rules_df.loc[rule_name, "features_names"]
+            )
+            bmin = convert_string_to_list(
+                self.rules_df.loc[rule_name, "bmin"], dtype="float"
+            )
+            bmax = convert_string_to_list(
+                self.rules_df.loc[rule_name, "bmax"], dtype="float"
+            )
+
+            rc = RuleConditions(
+                features_names=fn, features_index=fi, bmin=bmin, bmax=bmax,
+            )
+            rule = Rule(rc)
+            rule.set_params(name=rule_name)
+            sub_df = self.rules_df.loc[rule_name].drop(
+                ["features_names", "bmin", "bmax"]
+            )
+            if "features_index" in self.rules_df.columns:
+                sub_df.drop("features_index", inplace=True)
+            for col in sub_df.index:
+                attr_name = col.lower()
+                exec(f"rule.set_params({attr_name}=sub_df[col])")
+            rules.append(rule)
+        self.rules = rules
+    
+    def make_rules_df(self):
+        if len(self) == 0:
+            return pd.DataFrame()
+        columns = ["features_names", "bmin", "bmax"]
+        cond = self.rules[0].__dict__["conditions"]
+        if cond.features_index is not None:
+            columns.append("features_index")
+        if cond.xmax is not None:
+            columns.append("xmax")
+        if cond.xmin is not None:
+            columns.append("xmin")
+
+        to_skip = ["conditions", "name", "length"]
+        for attr in self.rules[0].__dict__:
+            if attr in to_skip:
+                continue
+            columns.append(attr)
+
+        self.rules_df = pd.DataFrame(index=[r.name for r in self.rules],
+                                     columns=columns)
+
+        for rule in self.rules:
+            name = rule.name
+            self.rules_df.loc[name, "features_names"] = \
+                rule.conditions.features_names
+            self.rules_df.loc[name, "bmax"] = rule.conditions.bmax
+            self.rules_df.loc[name, "bmin"] = rule.conditions.bmin
+            if "features_index" in self.rules_df.columns:
+                self.rules_df.loc[name, "features_index"] = \
+                    rule.conditions.features_index
+            if "xmax" in self.rules_df.columns:
+                self.rules_df.loc[name, "xmax"] = rule.conditions.xmax
+            if "xmin" in self.rules_df.columns:
+                self.rules_df.loc[name, "xmin"] = rule.conditions.xmin
+            for attr in rule.__dict__:
+                if attr in to_skip:
+                    continue
+                exec(f"self.rules_df.loc[name, '{attr}'] = rule.{attr}")
+
+    # noinspection PyUnresolvedReferences
+    def save(self, path: Union[str, "pathlib.Path", TransparentPath],
+             extension="csv", **kwargs):
+        if not isinstance(path, TransparentPath):
+            path = TransparentPath(path)
+        if self.rules_df is None:
+            self.make_rules_df()
+        if path.is_dir():
+            path = path / f"ruleset.{extension}"
+        path.write(self.rules_df, **kwargs)
 
     def append(self, rule):
         """
@@ -1499,7 +1681,7 @@ class Learning(BaseEstimator):
         return learning
 
     # noinspection PyUnresolvedReferences,PyTypeChecker
-    def fit(self, x, y, features_name=None):
+    def fit(self, x, y, features_names=None):
         """
         Fit the model according to the given training data.
 
@@ -1511,7 +1693,7 @@ class Learning(BaseEstimator):
         y: Union[array-like, pd.DataFrame, pd.Series]
             shape = [n]. The target values (real numbers).
 
-        features_name : List
+        features_names : List
             Optional. Name of each features.
         """
 
@@ -1566,14 +1748,14 @@ class Learning(BaseEstimator):
             self.set_params(calcmethod=calcmethod)
 
         features_index = range(data_x.shape[1])
-        if features_name is None:
-            features_name = ["X" + str(i) for i in features_index]
+        if features_names is None:
+            features_names = ["X" + str(i) for i in features_index]
 
         self.set_params(features_index=features_index)
-        self.set_params(features_name=features_name)
+        self.set_params(features_names=features_names)
 
         if hasattr(self, "l_max") is False:
-            l_max = len(features_name)
+            l_max = len(features_names)
             self.set_params(l_max=l_max)
 
         # Turn the matrix X in a discret matrix
@@ -1645,7 +1827,7 @@ class Learning(BaseEstimator):
         """
         Compute all rules of length one and keep the best.
         """
-        features_name = self.get_param("features_name")
+        features_names = self.get_param("features_names")
         features_index = self.get_param("features_index")
         x = self.get_param("x")
         calcmethod = self.get_param("calcmethod")
@@ -1654,7 +1836,7 @@ class Learning(BaseEstimator):
         cov_min = self.get_param("covmin")
         low_memory = self.get_param("low_memory")
 
-        jobs = min(len(features_name), self.get_param("nb_jobs"))
+        jobs = min(len(features_names), self.get_param("nb_jobs"))
 
         if jobs == 1:
             ruleset = list(
@@ -1669,7 +1851,7 @@ class Learning(BaseEstimator):
                         cov_max,
                         low_memory,
                     ),
-                    features_name,
+                    features_names,
                     features_index,
                 )
             )
@@ -1678,7 +1860,7 @@ class Learning(BaseEstimator):
                 delayed(make_rules)(
                     var, idx, x, y, calcmethod, cov_min, cov_max, low_memory
                 )
-                for var, idx in zip(features_name, features_index)
+                for var, idx in zip(features_names, features_index)
             )
 
         ruleset = functools.reduce(operator.add, ruleset)
@@ -1852,12 +2034,12 @@ class Learning(BaseEstimator):
                 print(selected_rs.calc_coverage(x_train))
             # TO REINDENT IF UNCOMMENTED (shoud be in the if)
             # neg_rule, pos_rule = add_no_rule(selected_rs, x_train,
-            # y_train) features_name = self.get_param('features_name')
+            # y_train) features_names = self.get_param('features_names')
             #
             # if neg_rule is not None:
             #     id_feature = neg_rule.conditions.get_param('features_index')
-            #     rule_features = list(itemgetter(*id_feature)(features_name))
-            #     neg_rule.conditions.set_params(features_name=rule_features)
+            #     rule_features = list(itemgetter(*id_feature)(features_names))
+            #     neg_rule.conditions.set_params(features_names=rule_features)
             #     neg_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
             #     cov_max=1.0)
             #     print('Add negative no-rule  %s.' % str(neg_rule))
@@ -1865,8 +2047,8 @@ class Learning(BaseEstimator):
             #
             # if pos_rule is not None:
             #     id_feature = pos_rule.conditions.get_param('features_index')
-            #     rule_features = list(itemgetter(*id_feature)(features_name))
-            #     pos_rule.conditions.set_params(features_name=rule_features)
+            #     rule_features = list(itemgetter(*id_feature)(features_names))
+            #     pos_rule.conditions.set_params(features_names=rule_features)
             #     pos_rule.calc_stats(y=y_train, x=x_train, cov_min=0.0,
             #     cov_max=1.0)
             #     print('Add positive no-rule  %s.' % str(pos_rule))
@@ -2075,7 +2257,7 @@ class Learning(BaseEstimator):
 
             # noinspection PyUnresolvedReferences
             n_features = data_x.shape[1]
-            input_features = self.get_param("features_name")
+            input_features = self.get_param("features_names")
             if len(input_features) != n_features:
                 raise ValueError(
                     "Number of features of the model must "
@@ -2110,7 +2292,7 @@ class Learning(BaseEstimator):
         nb_col = data_x.shape[1]
         nb_bucket = self.get_param("nb_bucket")
         bins_dict = self.get_param("bins")
-        features_name = self.get_param("features_name")
+        features_names = self.get_param("features_names")
 
         x_mat = []
         for i in range(nb_col):
@@ -2120,7 +2302,7 @@ class Learning(BaseEstimator):
             except ValueError:
                 xcol = np.array(xcol.flat, dtype=np.str)
 
-            var_name = features_name[i]
+            var_name = features_names[i]
 
             if np.issubdtype(xcol.dtype, np.floating):
                 if var_name not in bins_dict:
@@ -2479,7 +2661,7 @@ class Learning(BaseEstimator):
 
         for rule in ruleset:
             cd = rule.conditions
-            var_name = cd.get_param("features_name")
+            var_name = cd.get_param("features_names")
             bmin = cd.get_param("bmin")
             bmax = cd.get_param("bmax")
 
@@ -2642,7 +2824,7 @@ def make_rules(
         if xcol.dtype != np.str:
             for bmax in values[j:]:
                 conditions = RuleConditions(
-                    features_name=[feature_name],
+                    features_names=[feature_name],
                     features_index=[feature_index],
                     bmin=[bmin],
                     bmax=[bmax],
@@ -2661,7 +2843,7 @@ def make_rules(
         else:
             bmax = bmin
             conditions = RuleConditions(
-                features_name=[feature_name],
+                features_names=[feature_name],
                 features_index=[feature_index],
                 bmin=[bmin],
                 bmax=[bmax],
@@ -2880,7 +3062,7 @@ def get_variables_count(ruleset):
             Counter of all different features in the ruleset
     """
     col_varuleset = [
-        rule.conditions.get_param("features_name") for rule in ruleset
+        rule.conditions.get_param("features_names") for rule in ruleset
     ]
     varuleset_list = functools.reduce(operator.add, col_varuleset)
     count = Counter(varuleset_list)
