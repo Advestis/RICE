@@ -215,7 +215,10 @@ class RuleConditions(object):
         Parameters
         ----------
         x: Union[np.ndarray, pd.Series, pd.DataFrame]
-            Input data. shape=[n, d] or shape=[n, d, m]
+            Assuming n=number of dates, d number of features and m number of
+            Ys:
+            Input data. shape=[n, d] or [n, d, m] or [n, m, d] or [d, n, m]
+            of [m, n, d].
 
         Returns
         -------
@@ -370,11 +373,12 @@ class RuleConditions(object):
         Parameters
         ----------
         x: pd.DataFrame Input data.
-            Multi-indexed. Index shape=[n, d], columns shape=[m], so
-            multiindexed by date-features names, and columns are y names, or
-            Index shape=[m, d], columns shape=[n], so
-            multiindexed by date-y names, and columns are features names.
-            If the former is true, pass also columns='x'.
+            Multi-indexed. Index shape=[n, d] or [d, n], columns shape=[m], so
+            multiindexed by date-features names or features names-date,
+            and columns are y names, or Index shape=[m, d] or [d, m],
+            columns shape=[n], so multiindexed by date-y names or y
+            names-dates, and columns are features names. If the former is
+            true, pass also columns='x'.
 
         columns: str
             if 'y', assumes columns are y names and index second level is
@@ -384,34 +388,50 @@ class RuleConditions(object):
         -------
         activation_vector: pd.Series
             The activation vector. Index shape=[n, m]. So indexed by dates-y
-            names
+            names.
 
         """
 
-        dates = list(set(x.index.get_level_values(0)))
+        date_index = 0
+        other_index = 1
+        if not isinstance(x.index.levels[0], pd.DatetimeIndex):
+            date_index = 1
+            other_index = 0
+            if not isinstance(x.index.levels[1], pd.DatetimeIndex):
+                raise IndexError("Could not find dates in MultiIndex!")
+
+        dates = x.index.levels[date_index].to_list()
         dates.sort()
         if columns != "x" and columns != "y":
             raise ValueError(
                 "Argument 'columns' must be 'x' or 'y', " f"not {columns}"
             )
         if columns == "y":
+            # columns are ynames, index are dates
             activation_vector = pd.DataFrame(
                 index=dates, columns=x.columns, data=True
             )
-            for yname in x.columns:
+            for yname in activation_vector.columns:
                 data_x = x[yname]
+                # If multiindex was x-date, we need to swap to end up with
+                # date-x
+                if other_index == 0:
+                    data_x = data_x.unstack().T.stack()
                 av = self.transform_series(data_x)
                 activation_vector[yname] = av
         else:
-            # Do not use set for it messes up column ordering
-            ncol = len(set(x.index.get_level_values(1)))
-            columns = list(x.index.get_level_values(1))[:ncol]
+            # Do not use set for it messes up columns ordering
+            ynames = x.index.levels[other_index]
+            # columns are ynames, index are dates
             activation_vector = pd.DataFrame(
-                index=dates, columns=columns, data=True
+                index=dates, columns=ynames, data=True
             )
             for yname in activation_vector.columns:
                 idx = pd.IndexSlice
-                data_x = x.loc[idx[:, yname], :].droplevel(1).stack()
+                if other_index == 1:
+                    data_x = x.loc[idx[:, yname], :].droplevel(1).stack()
+                else:
+                    data_x = x.loc[idx[yname, :], :].droplevel(0).stack()
                 av = self.transform_series(data_x)
                 activation_vector[yname] = av
         return activation_vector.stack()
