@@ -241,7 +241,7 @@ class RuleConditions(object):
         return x
 
     def tag_columns(self, x: pd.DataFrame) -> str:
-        """Fill return 'y' if columns are Ys, 'x' if columns are features,
+        """Return 'y' if columns are Ys, 'x' if columns are features,
         raises IndexError if features are found nowhere.
 
         Parameters
