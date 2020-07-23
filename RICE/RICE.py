@@ -439,6 +439,7 @@ class RuleConditions(object):
             The activation vector, shape=n
         """
 
+        x.index = x.index.remove_unused_levels()
         x_data = x.unstack()
         x_data = self.order_columns(x_data, missing_feature)
         return pd.Series(
@@ -484,6 +485,7 @@ class RuleConditions(object):
 
         date_index = 0
         other_index = 1
+        x.index = x.index.remove_unused_levels()
         if not isinstance(x.index.levels[0], pd.DatetimeIndex):
             date_index = 1
             other_index = 0
@@ -823,7 +825,6 @@ class Rule(object):
 
             if cov >= cov_max or cov <= cov_min:
                 self.set_params(out=True)
-            return
         else:
             if not hasattr(self, "first_selected"):
                 self.calc_stats(
@@ -1384,16 +1385,12 @@ class RuleSet(object):
         data_x_test = x_test
         if isinstance(y_train, pd.Series) or isinstance(y_train, pd.DataFrame):
             data_y = y_train.values
-        if x_train is not None:
-            if isinstance(x_train, pd.Series) or isinstance(
-                x_train, pd.DataFrame
-            ):
-                data_x = x_train.values
-        if x_test is not None:
-            if isinstance(x_test, pd.Series) or isinstance(
-                x_test, pd.DataFrame
-            ):
-                data_x_test = x_test.values
+        if x_train is not None and isinstance(x_train, pd.Series)\
+                or isinstance(x_train, pd.DataFrame):
+            data_x = x_train.values
+        if x_test is not None and isinstance(x_test, pd.Series)\
+                or isinstance(x_test, pd.DataFrame):
+            data_x_test = x_test.values
 
         # Activation of all rules in the learning set
         activation_matrix = np.array(
